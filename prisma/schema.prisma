@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ============================================================
+// AUTH & USERS
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("USER")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspaceMembers WorkspaceMember[]
+  documents        Document[]
+  preferences      UserPreference[]
+  sessions         Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ============================================================
+// WORKSPACES
+// ============================================================
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members         WorkspaceMember[]
+  documents       Document[]
+  aiProviders     AIProviderConfig[]
+  promptTemplates PromptTemplate[]
+  preferences     UserPreference[]
+  aiJobs          AIJob[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("MEMBER")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ============================================================
+// DOCUMENTS
+// ============================================================
+
+model Document {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  title       String
+  fileType    String   // "PDF" or "EPUB"
+  storageKey  String
+  fileSize    Int
+  status      String   @default("PENDING")
+  parseStatus String   @default("PENDING")
+  language    String?
+  pageCount   Int?
+  metadataJson String? // Stored as string in sqlite instead of Json type natively supported in PG
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sections  DocumentSection[]
+  paragraphs Paragraph[]
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("documents")
+}
+
+// ============================================================
+// DOCUMENT STRUCTURE
+// ============================================================
+
+model DocumentSection {
+  id              String  @id @default(cuid())
+  documentId      String
+  parentSectionId String?
+  title           String
+  orderIndex      Int
+  anchor          String
+  metadataJson    String?
+
+  document      Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parentSection DocumentSection?  @relation("SectionHierarchy", fields: [parentSectionId], references: [id])
+  childSections DocumentSection[] @relation("SectionHierarchy")
+  paragraphs    Paragraph[]
+
+  @@index([documentId])
+  @@index([parentSectionId])
+  @@map("document_sections")
+}
+
+model Paragraph {
+  id             String  @id @default(cuid())
+  documentId     String
+  sectionId      String?
+  orderIndex     Int
+  pageNumber     Int?
+  rawText        String
+  normalizedText String
+  textHash       String
+  startOffset    Int
+  endOffset      Int
+  metadataJson   String?
+
+  document     Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  section      DocumentSection?       @relation(fields: [sectionId], references: [id])
+  sentences    Sentence[]
+  explanations ParagraphExplanation[]
+
+  @@index([documentId])
+  @@index([sectionId])
+  @@index([textHash])
+  @@map("paragraphs")
+}
+
+model Sentence {
+  id             String @id @default(cuid())
+  paragraphId    String
+  orderIndex     Int
+  rawText        String
+  normalizedText String
+  startOffset    Int
+  endOffset      Int
+
+  paragraph       Paragraph        @relation(fields: [paragraphId], references: [id], onDelete: Cascade)
+  annotationSpans AnnotationSpan[]
+
+  @@index([paragraphId])
+  @@map("sentences")
+}
+
+// ============================================================
+// AI EXPLANATIONS & ANNOTATIONS
+// ============================================================
+
+model ParagraphExplanation {
+  id                   String   @id @default(cuid())
+  paragraphId          String
+  provider             String
+  model                String
+  promptVersion        String
+  settingsHash         String
+  outputJson           String   // Storing JSON string for SQLite compatibility
+  rawPromptEncrypted   String?
+  rawResponseEncrypted String?
+  status               String   @default("PENDING")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  paragraph       Paragraph        @relation(fields: [paragraphId], references: [id], onDelete: Cascade)
+  annotationSpans AnnotationSpan[]
+  vocabularyNotes VocabularyNote[]
+
+  @@index([paragraphId])
+  @@index([settingsHash])
+  @@map("paragraph_explanations")
+}
+
+model AnnotationSpan {
+  id                     String  @id @default(cuid())
+  paragraphExplanationId String
+  sentenceId             String?
+  startOffset            Int
+  endOffset              Int
+  spanType               String
+  label                  String
+  colorKey               String
+  explanation            String
+
+  paragraphExplanation ParagraphExplanation @relation(fields: [paragraphExplanationId], references: [id], onDelete: Cascade)
+  sentence             Sentence?            @relation(fields: [sentenceId], references: [id])
+
+  @@index([paragraphExplanationId])
+  @@map("annotation_spans")
+}
+
+model VocabularyNote {
+  id                     String  @id @default(cuid())
+  paragraphExplanationId String
+  term                   String
+  lemma                  String?
+  note                   String
+  translation            String?
+  difficultyLevel        String?
+
+  paragraphExplanation ParagraphExplanation @relation(fields: [paragraphExplanationId], references: [id], onDelete: Cascade)
+
+  @@index([paragraphExplanationId])
+  @@map("vocabulary_notes")
+}
+
+// ============================================================
+// AI PROVIDER CONFIGURATION
+// ============================================================
+
+model AIProviderConfig {
+  id                  String   @id @default(cuid())
+  workspaceId         String
+  providerKey         String
+  isEnabled           Boolean  @default(true)
+  baseUrl             String
+  encryptedApiKey     String
+  maskedApiKeyPreview String
+  model               String
+  temperature         Float    @default(0.3)
+  maxTokens           Int      @default(384000)
+  topP                Float    @default(1.0)
+  timeoutMs           Int      @default(300000)
+  retryCount          Int      @default(2)
+  streamingEnabled    Boolean  @default(false)
+  saveRawPrompt       Boolean  @default(false)
+  saveRawResponse     Boolean  @default(false)
+  saveRequestInput    Boolean  @default(false)
+  cacheEnabled        Boolean  @default(true)
+  isDefault           Boolean  @default(false)
+  priority            Int      @default(0)
+  lastTestedAt        DateTime?
+  lastTestStatus      String?
+  lastTestMessage     String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, providerKey])
+  @@index([workspaceId])
+  @@map("ai_provider_configs")
+}
+
+// ============================================================
+// PROMPT TEMPLATES
+// ============================================================
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String
+  templateType String  // "SYSTEM", "PARAGRAPH_EXPLANATION", "REPAIR"
+  version     String
+  name        String
+  content     String
+  isActive    Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("prompt_templates")
+}
+
+// ============================================================
+// USER PREFERENCES
+// ============================================================
+
+model UserPreference {
+  id                           String   @id @default(cuid())
+  userId                       String
+  workspaceId                  String
+  preferredExplanationLanguage String   @default("en")
+  preferredBilingualMode       Boolean  @default(false)
+  preferredGrammarMode         Boolean  @default(true)
+  preferredAnnotationLayers    String   @default("[]") // Stored as JSON string
+  readerTheme                  String   @default("dark")
+  savedDraftJson               String?  // JSON string
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@map("user_preferences")
+}
+
+// ============================================================
+// AI JOBS
+// ============================================================
+
+model AIJob {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  jobType      String   // "PARSE_DOCUMENT", "GENERATE_EXPLANATION"
+  targetId     String
+  status       String   @default("QUEUED")
+  attemptCount Int      @default(0)
+  errorMessage String?
+  metadataJson String?  // JSON string
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([targetId])
+  @@index([status])
+  @@map("ai_jobs")
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=DeepReader Next.js App
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+Environment=NODE_ENV=production
+EnvironmentFile=__APP_DIR__/.env.production
+ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 -p 3000
+Restart=always
+RestartSec=5
+User=__RUN_USER__
+Group=__RUN_GROUP__
+
+[Install]
+WantedBy=multi-user.target

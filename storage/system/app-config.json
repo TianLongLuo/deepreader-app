@@ -1,0 +1,11 @@
+{
+  "allowRegistrations": true,
+  "globalAiProvider": "deepseek",
+  "shareGlobalDeepSeekWithUsers": true,
+  "allowUserAiSettings": false,
+  "globalDeepseekApiKeyEncrypted": "18NETnVN5LT/smZ51iCYgtA9lZ8Sja0Uy8R+wq9NfKKO67K9I/tKF/50+JpLr6VY1DLEfjzL3eYYuA3IHrCDlMr0sg==",
+  "globalDeepseekApiKeyPreview": "sk-****c077",
+  "globalGeminiApiKeyEncrypted": "R1m7YXEhFiZYq2uxA64SqPt64MDSD0T6+WWCPPODpOxScOJIPDD/OXFRfdxCzmCvYTDxhb8BpqQj+R9L9yMwjcLutZ2NyiQ=",
+  "globalGeminiApiKeyPreview": "AIz****X-Y0",
+  "globalGeminiModel": "gemini-3-flash-preview"
+}

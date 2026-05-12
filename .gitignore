@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+.env.local
+.env.production
+*.db
+storage/uploads/
+storage/tts/
+*.mp3

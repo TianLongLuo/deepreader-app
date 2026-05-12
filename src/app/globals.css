@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter);
+  
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  @media (width >= calc(--theme(--breakpoint-sm))) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+@layer base {
+  :root {
+    --background: 33 100% 96%;
+    --foreground: 24 83% 14%;
+    --card: 33 100% 98%;
+    --card-foreground: 24 83% 14%;
+    --popover: 33 100% 98%;
+    --popover-foreground: 24 83% 14%;
+    --primary: 24 95% 53%; /* Cozy kitten orange */
+    --primary-foreground: 33 100% 98%;
+    --secondary: 35 100% 91%;
+    --secondary-foreground: 24 83% 20%;
+    --muted: 32 100% 93%;
+    --muted-foreground: 25 44% 40%;
+    --accent: 29 100% 88%;
+    --accent-foreground: 24 83% 18%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 31 90% 82%;
+    --input: 31 90% 82%;
+    --ring: 24 95% 53%;
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 224 71.4% 4.1%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 259 87% 75%; /* Lighter purple in dark mode */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 259 87% 75%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 15% 18%, rgba(251, 191, 36, 0.22), transparent 28%),
+      radial-gradient(circle at 85% 12%, rgba(251, 146, 60, 0.20), transparent 30%),
+      radial-gradient(circle at 52% 100%, rgba(253, 186, 116, 0.25), transparent 36%);
+    background-attachment: fixed;
+  }
+}
+
+/* Hide scrollbar but keep scroll functionality */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom UI utilities for aesthetic design */
+.glass {
+  @apply border border-orange-200/80 bg-white/75 shadow-xl shadow-orange-200/40 backdrop-blur-xl;
+}
+.dark .glass {
+  @apply bg-black/40 backdrop-blur-md border border-white/10;
+}
+
+.cat-page-shell {
+  @apply relative min-h-full overflow-hidden px-6 py-8 md:px-8;
+}
+
+.cat-page-shell::before {
+  content: '🐾';
+  position: fixed;
+  top: 1.25rem;
+  right: 2rem;
+  z-index: 0;
+  font-size: 3rem;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.cat-page-shell::after {
+  content: '🧶';
+  position: fixed;
+  left: 17rem;
+  bottom: 1.5rem;
+  z-index: 0;
+  font-size: 3rem;
+  opacity: 0.20;
+  pointer-events: none;
+}
+
+.cat-heading {
+  @apply text-orange-950;
+}
+
+.cat-muted {
+  @apply text-orange-900/65;
+}

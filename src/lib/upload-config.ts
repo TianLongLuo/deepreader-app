@@ -1,0 +1,4 @@
+export const MAX_DOCUMENT_UPLOAD_BYTES = 200 * 1024 * 1024;
+export const MAX_DOCUMENT_UPLOAD_MB = Math.round(
+  MAX_DOCUMENT_UPLOAD_BYTES / 1024 / 1024
+);
