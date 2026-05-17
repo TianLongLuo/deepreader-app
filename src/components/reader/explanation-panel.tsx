@@ -36,15 +36,50 @@ type VocabularyNoteItem = ParagraphExplanationOutput['vocabulary_notes'][number]
 
 type PronunciationStatus = Record<string, 'loading' | 'error'>;
 type LearningDepth = 'quick' | 'structure' | 'grammar';
+
+type TokenOffset = { start: number; end: number };
+
 type ActiveFocusTarget =
   | { type: 'sentence'; sentenceIndex: number }
-  | { type: 'clause'; sentenceIndex: number; text: string }
+  | { type: 'clause'; sentenceIndex: number; text: string; offsets?: TokenOffset }
   | {
       type: 'reference';
       sentenceIndex: number;
       expression: string;
       refersTo: string;
+    }
+  | {
+      type: 'token';
+      sentenceIndex: number;
+      offsets: TokenOffset;
+    }
+  | {
+      type: 'vocabulary';
+      offsets: TokenOffset[];
     };
+
+function findOffsetsInParagraph(
+  paragraphText: string,
+  searchText: string
+): { start: number; end: number } | null {
+  if (!paragraphText || !searchText) return null;
+
+  const normalizedSource = paragraphText
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\xAD/g, '')
+    .toLowerCase();
+  const normalizedSearch = searchText
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\xAD/g, '')
+    .toLowerCase();
+
+  const index = normalizedSource.indexOf(normalizedSearch);
+  if (index === -1) return null;
+
+  return { start: index, end: index + normalizedSearch.length };
+}
 
 type ClauseMapItem = {
   clause_text: string;
@@ -456,7 +491,15 @@ function getStructurePatternLabel(
   return labels.join(bilingualMode ? ' + ' : ' + ');
 }
 
-function OrderedStructureLine({ item }: { item: StructureBreakdownItem }) {
+function OrderedStructureLine({
+  item,
+  sentenceIndex,
+  onTokenClick,
+}: {
+  item: StructureBreakdownItem;
+  sentenceIndex: number;
+  onTokenClick?: (sentenceIndex: number, offsets: { start: number; end: number }) => void;
+}) {
   const sourceText = item.sentence_text || '';
   const tokens = getOrderedStructureTokens(item);
 
@@ -482,7 +525,8 @@ function OrderedStructureLine({ item }: { item: StructureBreakdownItem }) {
       <span
         key={`token-${index}`}
         title={token.label}
-        className={`font-medium ${
+        onClick={() => onTokenClick?.(sentenceIndex, { start: token.start, end: token.end })}
+        className={`font-medium cursor-pointer transition-colors hover:bg-orange-200/40 ${
           STRUCTURE_TOKEN_STYLES[token.role].underline
             ? 'underline decoration-2 underline-offset-4'
             : ''
@@ -584,6 +628,20 @@ function BilingualTextBlock({
   );
 }
 
+function SkeletonBlock({ className, lines = 2 }: { className?: string; lines?: number }) {
+  return (
+    <div className={`animate-pulse space-y-2 ${className || ''}`}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <div
+          key={i}
+          className="h-3 rounded bg-gradient-to-r from-orange-100 via-orange-200/60 to-orange-100 bg-[length:200%_100%]"
+          style={{ width: i === lines - 1 ? '70%' : '100%' }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function StructureLearningPath({
   item,
   bilingualMode,
@@ -677,12 +735,16 @@ function SentenceDetail({
   bilingualMode,
   pronunciationStatus,
   onPlayPronunciation,
+  onTokenClick,
+  sentenceIndex,
 }: {
   item: StructureBreakdownItem;
   displayIndex: number;
   bilingualMode: boolean;
   pronunciationStatus: PronunciationStatus;
   onPlayPronunciation: (text: string) => void;
+  onTokenClick?: (sentenceIndex: number, offsets: { start: number; end: number }) => void;
+  sentenceIndex: number;
 }) {
   return (
     <div className="border-t border-orange-200/70 bg-orange-50/55 px-4 py-3">
@@ -698,7 +760,7 @@ function SentenceDetail({
             onPlay={onPlayPronunciation}
           />
         </div>
-        <OrderedStructureLine item={item} />
+        <OrderedStructureLine item={item} sentenceIndex={sentenceIndex} onTokenClick={onTokenClick} />
       </div>
 
       {item.explanation && (
@@ -809,6 +871,7 @@ function SentenceAccordionList({
   bilingualMode,
   pronunciationStatus,
   onPlayPronunciation,
+  onTokenClick,
 }: {
   items: StructureBreakdownItem[];
   activeIndex: number | null;
@@ -816,6 +879,7 @@ function SentenceAccordionList({
   bilingualMode: boolean;
   pronunciationStatus: PronunciationStatus;
   onPlayPronunciation: (text: string) => void;
+  onTokenClick?: (sentenceIndex: number, offsets: { start: number; end: number }) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -848,6 +912,8 @@ function SentenceAccordionList({
                 bilingualMode={bilingualMode}
                 pronunciationStatus={pronunciationStatus}
                 onPlayPronunciation={onPlayPronunciation}
+                onTokenClick={onTokenClick}
+                sentenceIndex={item.sentence_index}
               />
             )}
           </div>
@@ -1315,6 +1381,7 @@ export default function ExplanationPanel({
   selectionKey,
   onClose,
   onActiveSentenceChange,
+  onFocusTargetChange,
   onExplanationReady,
 }: ExplanationPanelProps) {
   const {
@@ -1330,6 +1397,22 @@ export default function ExplanationPanel({
   const [pronunciationStatus, setPronunciationStatus] = useState<PronunciationStatus>({});
   const [pronunciationError, setPronunciationError] = useState<string | null>(null);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
+  const [selectedVocabIndices, setSelectedVocabIndices] = useState<Set<number>>(new Set());
+
+  type SectionId = 'summary' | 'meaning' | 'breakdown' | 'vocabulary' | 'grammar' | 'logic' | 'translation';
+  type SectionState = 'skeleton' | 'streaming' | 'complete';
+
+  const initialSectionStates: Record<SectionId, SectionState> = {
+    summary: 'skeleton',
+    meaning: 'skeleton',
+    breakdown: 'skeleton',
+    vocabulary: 'skeleton',
+    grammar: 'skeleton',
+    logic: 'skeleton',
+    translation: 'skeleton',
+  };
+
+  const [sectionStates, setSectionStates] = useState<Record<SectionId, SectionState>>(initialSectionStates);
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -1339,6 +1422,53 @@ export default function ExplanationPanel({
       onActiveSentenceChange?.(selectionKey, index);
     },
     [onActiveSentenceChange, selectionKey]
+  );
+
+  const handleTokenClick = useCallback(
+    (sentenceIndex: number, offsets: { start: number; end: number }) => {
+      setSelectedVocabIndices(new Set());
+      const target: ActiveFocusTarget = {
+        type: 'token',
+        sentenceIndex,
+        offsets,
+      };
+      onFocusTargetChange?.(selectionKey, target);
+    },
+    [onFocusTargetChange, selectionKey]
+  );
+
+  const handleVocabClick = useCallback(
+    (vocabIndex: number) => {
+      const result = data?.output;
+      if (!result?.vocabulary_notes?.[vocabIndex]) return;
+
+      setSelectedVocabIndices((prev) => {
+        const next = new Set(prev);
+        if (next.has(vocabIndex)) {
+          next.delete(vocabIndex);
+        } else {
+          if (prev.size === 0) {
+            onActiveSentenceChange?.(selectionKey, null);
+          }
+          next.add(vocabIndex);
+        }
+
+        const offsets: Array<{ start: number; end: number }> = [];
+        next.forEach((index) => {
+          const term = result.vocabulary_notes[index].term;
+          const offset = findOffsetsInParagraph(text, term);
+          if (offset) offsets.push(offset);
+        });
+
+        const target: ActiveFocusTarget | null = offsets.length > 0
+          ? { type: 'vocabulary', offsets }
+          : null;
+        onFocusTargetChange?.(selectionKey, target);
+
+        return next;
+      });
+    },
+    [data, text, onFocusTargetChange, onActiveSentenceChange, selectionKey]
   );
 
   const handlePlayPronunciation = useCallback(async (textToSpeak: string) => {
@@ -1371,6 +1501,7 @@ export default function ExplanationPanel({
     setGenerating(true);
     setData(null);
     setError(null);
+    setSectionStates(initialSectionStates);
     handleActiveSentenceChange(null);
     let keptPartialResult = false;
 
@@ -1409,6 +1540,18 @@ export default function ExplanationPanel({
               return;
             }
 
+            // Update section states based on available content
+            setSectionStates((prev) => {
+              const next = { ...prev };
+              if (partialOutput.paragraph_summary) next.summary = 'complete';
+              if (partialOutput.plain_meaning) next.meaning = 'complete';
+              if (partialOutput.sentence_breakdown && partialOutput.sentence_breakdown.length > 0) next.breakdown = 'complete';
+              if (partialOutput.vocabulary_notes && partialOutput.vocabulary_notes.length > 0) next.vocabulary = 'complete';
+              if (partialOutput.grammar_notes && partialOutput.grammar_notes.length > 0) next.grammar = 'complete';
+              if (partialOutput.logic_flow && partialOutput.logic_flow.length > 0) next.logic = 'complete';
+              return next;
+            });
+
             const signature = JSON.stringify({
               summary: partialOutput.paragraph_summary,
               meaning: partialOutput.plain_meaning,
@@ -1438,6 +1581,15 @@ export default function ExplanationPanel({
             const explanation = event.explanation as ExplanationData;
             completed = true;
             setData(explanation);
+            setSectionStates({
+              summary: 'complete',
+              meaning: 'complete',
+              breakdown: 'complete',
+              vocabulary: 'complete',
+              grammar: 'complete',
+              logic: 'complete',
+              translation: 'complete',
+            });
             onExplanationReady?.(selectionKey, explanation.output ?? null);
             return;
           }
@@ -1529,15 +1681,27 @@ export default function ExplanationPanel({
 
   if (generating && !data) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center space-y-4 p-8">
-        <Sparkles className="w-8 h-8 text-primary animate-pulse" />
-        <div className="text-sm font-medium text-orange-900/65 animate-pulse">
-          {bilingualMode ? 'AI 正在拆解这段英文... / AI is analyzing this paragraph...' : 'AI is analyzing this paragraph...'}
-        </div>
-        <div className="flex space-x-1">
-          <div className="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-          <div className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+      <div className="relative flex h-full flex-col bg-gradient-to-br from-orange-50/95 via-orange-100/88 to-amber-100/85 text-orange-950 backdrop-blur-xl">
+        <div className="flex flex-1 flex-col p-6 space-y-6 overflow-y-auto">
+          <div>
+            <div className="h-3 w-24 bg-orange-200/60 rounded animate-pulse mb-3" />
+            <SkeletonBlock lines={3} className="rounded-2xl border border-orange-200/50 bg-white/40 p-4" />
+          </div>
+          <div>
+            <div className="h-3 w-32 bg-orange-200/60 rounded animate-pulse mb-3" />
+            <SkeletonBlock lines={4} className="rounded-xl border border-orange-200/50 bg-white/40 p-3" />
+            <div className="mt-2">
+              <SkeletonBlock lines={2} className="rounded-xl border border-orange-200/50 bg-white/40 p-3" />
+            </div>
+          </div>
+          <div>
+            <div className="h-3 w-20 bg-orange-200/60 rounded animate-pulse mb-3" />
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-8 w-24 bg-orange-100/60 rounded-full animate-pulse" />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1608,49 +1772,30 @@ export default function ExplanationPanel({
   const textLabels = bilingualMode
     ? {
         plainMeaning: '含义总览 Meaning Overview',
-        translation: '自然中文 Natural Chinese',
         summary: '段落作用 Paragraph Role',
         tone: '语气与潜台词 Tone & Subtext',
         readingTip: '练习提示 Reading Tip',
         sentenceList: '句子列表 Sentence List',
         sentenceListHint: '先选一句，只看这一句的拆解；展开下一句时，上一句会自动收起。',
         tabs: {
-          meaning: '含义 + 结构 Meaning + Structure',
+          overview: '理解 Overview',
+          analysis: '分析 Analysis',
           vocabulary: '词汇 Vocabulary',
         },
       }
       : {
         plainMeaning: 'Meaning Overview',
-        translation: '中文理解',
         summary: 'Paragraph Summary',
         tone: 'Tone & Subtext',
         readingTip: 'Reading Tip',
         sentenceList: 'Sentence List',
         sentenceListHint: 'Open one sentence at a time. Opening another sentence automatically closes the current one.',
         tabs: {
-          meaning: 'Meaning + Structure',
+          overview: 'Overview',
+          analysis: 'Analysis',
           vocabulary: 'Vocabulary',
         },
       };
-
-  const structureAnalysisNode = (
-    <div className="pt-4 border-t">
-      <div className="mb-4">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65">{textLabels.sentenceList}</h4>
-        <p className="mt-2 text-xs leading-relaxed text-orange-900/65">
-          {textLabels.sentenceListHint}
-        </p>
-      </div>
-      <SentenceAccordionList
-        items={structureBreakdown}
-        activeIndex={activeSentenceIndex}
-        setActiveIndex={handleActiveSentenceChange}
-        bilingualMode={bilingualMode}
-        pronunciationStatus={pronunciationStatus}
-        onPlayPronunciation={handlePlayPronunciation}
-      />
-    </div>
-  );
 
   return (
     <div className="relative flex h-full flex-col bg-gradient-to-br from-orange-50/95 via-orange-100/88 to-amber-100/85 text-orange-950 backdrop-blur-xl">
@@ -1697,12 +1842,15 @@ export default function ExplanationPanel({
            </div>
         </div>
 
-      <Tabs.Root defaultValue="meaning" className="flex h-full flex-1 flex-col overflow-hidden pt-12">
+      <Tabs.Root defaultValue="overview" className="flex h-full flex-1 flex-col overflow-hidden pt-12">
         <Tabs.List className="flex shrink-0 overflow-x-auto border-b border-orange-200/80 bg-white/55 px-2 no-scrollbar">
-          <Tabs.Trigger value="meaning" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
-            <div className="flex items-center space-x-2"><BookOpen className="w-4 h-4" /><ListTree className="w-4 h-4" /><span>{textLabels.tabs.meaning}</span></div>
+          <Tabs.Trigger value="overview" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
+            <div className="flex items-center space-x-2"><BookOpen className="w-4 h-4" /><span>{textLabels.tabs.overview}</span></div>
           </Tabs.Trigger>
-          <Tabs.Trigger value="vocab" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
+          <Tabs.Trigger value="analysis" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
+            <div className="flex items-center space-x-2"><ListTree className="w-4 h-4" /><span>{textLabels.tabs.analysis}</span></div>
+          </Tabs.Trigger>
+          <Tabs.Trigger value="vocabulary" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
             <div className="flex items-center space-x-2"><Languages className="w-4 h-4" /><span>{textLabels.tabs.vocabulary}</span></div>
           </Tabs.Trigger>
         </Tabs.List>
@@ -1714,88 +1862,223 @@ export default function ExplanationPanel({
         )}
 
         <div className="flex-1 overflow-y-auto w-full">
-            {/* Meaning Tab */}
-            <Tabs.Content value="meaning" className="p-6 space-y-6 outline-none animate-in fade-in slide-in-from-right-4 duration-300 pb-32">
-            <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3 flex items-center"><Info className="w-3 h-3 mr-1"/> {textLabels.plainMeaning}</h4>
-                <BilingualTextBlock
-                  value={result.plain_meaning}
-                  secondary={result.translation}
-                  bilingualMode={bilingualMode}
-                  className="rounded-2xl border border-orange-200/80 bg-white/70 p-4 text-base leading-relaxed text-orange-950 shadow-sm"
-                />
-            </div>
-
-            {bilingualMode && result.translation ? (
-                <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">{textLabels.translation}</h4>
-                    <div className="rounded-2xl border border-orange-200/70 bg-white/60 p-4 text-base leading-relaxed text-orange-950">
-                        {result.translation}
-                    </div>
-                </div>
-            ) : null}
-
-            <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">{textLabels.summary}</h4>
+            {/* Overview Tab — 理解 */}
+            <Tabs.Content value="overview" className="p-6 space-y-6 outline-none pb-32">
+              {/* 段落大意 */}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
+                  <Info className="w-3 h-3 mr-1" /> {textLabels.summary}
+                </h4>
                 <BilingualTextBlock
                   value={result.paragraph_summary}
-                  secondary={bilingualMode ? result.plain_meaning : ''}
+                  secondary={result.plain_meaning}
                   bilingualMode={bilingualMode}
                   className="border-l-2 border-orange-300 py-1 pl-4 text-sm leading-relaxed text-orange-950/90"
                 />
-            </div>
+              </div>
 
-            {result.tone_or_subtext && (
-                <div className="rounded-2xl border border-orange-200/70 bg-orange-50/70 p-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-2">{textLabels.tone}</h4>
-                <BilingualTextBlock
-                  value={result.tone_or_subtext}
-                  bilingualMode={bilingualMode}
-                  className="text-sm text-orange-950/80 leading-relaxed"
-                />
+              {/* 逐句意译列表 */}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
+                  Sentence-by-Sentence
+                </h4>
+                <div className="space-y-2">
+                  {structureBreakdown.map((sentence, index) => (
+                    <div key={index} className="rounded-xl border border-orange-200/70 bg-white/60 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <span className="text-[10px] font-semibold text-orange-900/50">
+                            {bilingualMode ? `第 ${index + 1} 句` : `Sentence ${index + 1}`}
+                          </span>
+                          <p className="text-sm leading-relaxed text-orange-950/80 mt-1">
+                            {result.plain_meaning?.split('\n')[index] || sentence.sentence_text}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleActiveSentenceChange(
+                            activeSentenceIndex === index ? null : index
+                          )}
+                          className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-100"
+                        >
+                          {activeSentenceIndex === index
+                            ? (bilingualMode ? '收起 ▲' : 'Collapse ▲')
+                            : (bilingualMode ? '查看拆解 ▶' : 'Analyze ▶')}
+                        </button>
+                      </div>
+                      {activeSentenceIndex === index && (
+                        <div className="mt-3 border-t border-orange-200/50 pt-3">
+                          <OrderedStructureLine
+                            item={sentence}
+                            sentenceIndex={sentence.sentence_index}
+                            onTokenClick={handleTokenClick}
+                          />
+                          {sentence.explanation && (
+                            <p className="mt-2 text-xs leading-relaxed text-orange-900/60">
+                              {sentence.explanation}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-            )}
-            
-            {result.reading_tip && (
+              </div>
+
+              {/* 阅读提示 */}
+              {result.reading_tip && (
                 <div className="rounded-2xl border border-orange-200/70 bg-orange-50/70 p-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-2">{textLabels.readingTip}</h4>
-                <BilingualTextBlock
-                  value={result.reading_tip}
-                  bilingualMode={bilingualMode}
-                  className="text-sm text-orange-950/80 leading-relaxed"
-                />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-2">{textLabels.readingTip}</h4>
+                  <BilingualTextBlock
+                    value={result.reading_tip}
+                    bilingualMode={bilingualMode}
+                    className="text-sm text-orange-950/80 leading-relaxed"
+                  />
                 </div>
-            )}
-            {structureAnalysisNode}
+              )}
+
+              {/* 语气与潜台词 */}
+              {result.tone_or_subtext && (
+                <div className="rounded-2xl border border-orange-200/70 bg-orange-50/70 p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-2">{textLabels.tone}</h4>
+                  <BilingualTextBlock
+                    value={result.tone_or_subtext}
+                    bilingualMode={bilingualMode}
+                    className="text-sm text-orange-950/80 leading-relaxed"
+                  />
+                </div>
+              )}
             </Tabs.Content>
 
-            {/* Vocabulary Tab */}
-            <Tabs.Content value="vocab" className="p-6 outline-none animate-in fade-in slide-in-from-right-4 duration-300 pb-32">
-                <div className="grid gap-3">
-                    {result.vocabulary_notes?.map((vocab: VocabularyNoteItem, i: number) => (
-                        <div key={i} className="group relative overflow-hidden rounded-2xl border border-orange-200/70 bg-white/65 p-4 transition-colors hover:bg-orange-50/80">
-                            <div className="mb-2 flex items-center justify-between gap-3">
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                    <span className="truncate text-lg font-bold text-orange-700">{vocab.term}</span>
-                                    <PronunciationButton
-                                        text={vocab.term}
-                                        label={bilingualMode ? '播放单词发音 / Play word pronunciation' : 'Play word pronunciation'}
-                                        status={pronunciationStatus[pronunciationKey(vocab.term)]}
-                                        onPlay={handlePlayPronunciation}
-                                    />
-                                </div>
-                                {vocab.translation && (
-                                  <span className="shrink-0 rounded-md bg-orange-100 px-2 py-1 text-xs font-medium text-orange-800">{vocab.translation}</span>
-                                )}
-                            </div>
-                            <div className="text-sm font-medium leading-relaxed mb-1">{vocab.meaning}</div>
-                            {vocab.usage_note && <div className="mt-2 border-l-2 border-orange-300 pl-2 text-xs leading-relaxed text-orange-900/65 italic">{vocab.usage_note}</div>}
-                        </div>
+            {/* Analysis Tab — 分析 */}
+            <Tabs.Content value="analysis" className="p-6 space-y-6 outline-none pb-32">
+              {structureBreakdown.length > 0 && (
+                <>
+                  <div className="mb-4">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65">{textLabels.sentenceList}</h4>
+                    <p className="mt-2 text-xs leading-relaxed text-orange-900/65">
+                      {textLabels.sentenceListHint}
+                    </p>
+                  </div>
+                  <SentenceAccordionList
+                    items={structureBreakdown}
+                    activeIndex={activeSentenceIndex}
+                    setActiveIndex={handleActiveSentenceChange}
+                    bilingualMode={bilingualMode}
+                    pronunciationStatus={pronunciationStatus}
+                    onPlayPronunciation={handlePlayPronunciation}
+                    onTokenClick={handleTokenClick}
+                  />
+                </>
+              )}
+
+              {result.grammar_notes?.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
+                    Grammar Notes
+                  </h4>
+                  <div className="space-y-2">
+                    {result.grammar_notes.map((note, index) => (
+                      <div key={index} className="rounded-xl border border-orange-200/70 bg-white/60 p-3">
+                        <p className="text-sm font-medium text-orange-950">{note.pattern}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-orange-900/60">{note.explanation}</p>
+                      </div>
                     ))}
-                    {(!result.vocabulary_notes || result.vocabulary_notes.length === 0) && (
-                        <div className="py-10 text-center text-sm text-orange-900/55">No specialized vocabulary detected.</div>
-                    )}
+                  </div>
                 </div>
+              )}
+
+              {result.logic_flow && result.logic_flow.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
+                    Logic Flow
+                  </h4>
+                  <div className="space-y-1">
+                    {result.logic_flow.map((step, index) => (
+                      <div key={index} className="flex gap-3 rounded-xl border border-orange-200/60 bg-white/50 p-3">
+                        <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-xs font-bold text-orange-700">
+                          {step.step}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-orange-900/70">{step.relation}</span>
+                          </div>
+                          <p className="mt-0.5 text-sm text-orange-950/80">{step.text}</p>
+                          <p className="mt-0.5 text-xs text-orange-900/60">{step.explanation}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Tabs.Content>
+
+            {/* Vocabulary Tab — 词汇 */}
+            <Tabs.Content value="vocabulary" className="p-4 space-y-4 outline-none animate-in fade-in slide-in-from-right-4 duration-150 pb-32">
+                {result.vocabulary_notes?.length > 0 ? (
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap gap-2">
+                            {result.vocabulary_notes.map((vocab: VocabularyNoteItem, i: number) => (
+                                <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => handleVocabClick(i)}
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all ${
+                                        selectedVocabIndices.has(i)
+                                            ? 'border-2 border-orange-500 bg-orange-100 text-orange-800 shadow-sm'
+                                            : 'border border-orange-200 bg-white/70 text-orange-900/70 hover:border-orange-300 hover:bg-orange-50'
+                                    }`}
+                                >
+                                    {vocab.term}
+                                    {vocab.translation && (
+                                        <span className="text-xs text-orange-500/70">({vocab.translation})</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+
+                        {[...selectedVocabIndices].length > 0 && (
+                            <div className="grid gap-3">
+                                {[...selectedVocabIndices].map((index) => {
+                                    const vocab = result.vocabulary_notes[index];
+                                    return (
+                                        <div
+                                            key={index}
+                                            className="rounded-2xl border border-orange-200/80 bg-white/70 p-4 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-2 duration-200"
+                                        >
+                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg font-bold text-orange-700">{vocab.term}</span>
+                                                    <PronunciationButton
+                                                        text={vocab.term}
+                                                        label={bilingualMode ? '播放单词发音 / Play word pronunciation' : 'Play word pronunciation'}
+                                                        status={pronunciationStatus[pronunciationKey(vocab.term)]}
+                                                        onPlay={handlePlayPronunciation}
+                                                    />
+                                                </div>
+                                                {vocab.translation && (
+                                                    <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-600">
+                                                        {vocab.translation}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-sm font-medium text-orange-950/80">{vocab.meaning}</p>
+                                            {vocab.usage_note && (
+                                                <p className="mt-2 border-l-2 border-orange-300 pl-3 text-xs italic text-orange-900/60">
+                                                    {vocab.usage_note}
+                                                </p>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-center py-12 text-sm text-orange-900/50">
+                        No specialized vocabulary detected.
+                    </div>
+                )}
             </Tabs.Content>
         </div>
       </Tabs.Root>

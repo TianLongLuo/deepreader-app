@@ -112,14 +112,25 @@ type PdfPageGroup = {
   paragraphs: PdfTextParagraph[];
 };
 
+type TokenOffset = { start: number; end: number };
+
 type ActiveFocusTarget =
   | { type: 'sentence'; sentenceIndex: number }
-  | { type: 'clause'; sentenceIndex: number; text: string }
+  | { type: 'clause'; sentenceIndex: number; text: string; offsets?: TokenOffset }
   | {
       type: 'reference';
       sentenceIndex: number;
       expression: string;
       refersTo: string;
+    }
+  | {
+      type: 'token';
+      sentenceIndex: number;
+      offsets: TokenOffset;
+    }
+  | {
+      type: 'vocabulary';
+      offsets: TokenOffset[];
     };
 
 type ReaderDocument = {
@@ -498,6 +509,14 @@ function getFocusRanges(
     if (ranges.length > 0) {
       return dedupeRanges(ranges);
     }
+  }
+
+  if (activeFocusTarget?.type === 'token') {
+    return [activeFocusTarget.offsets];
+  }
+
+  if (activeFocusTarget?.type === 'vocabulary') {
+    return activeFocusTarget.offsets;
   }
 
   const sentenceIndex =
@@ -1698,8 +1717,8 @@ export default function ReaderLayout({
       }
     };
 
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    globalThis.document.addEventListener('keydown', onKeyDown);
+    return () => globalThis.document.removeEventListener('keydown', onKeyDown);
   }, [immersive]);
 
   useEffect(() => {
