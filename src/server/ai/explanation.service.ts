@@ -251,7 +251,10 @@ function getStructureCompletenessIssue(
   ).length;
   const minimumCoreItems = Math.max(
     2,
-    Math.ceil(expectedSegments.length * 0.65)
+    Math.min(
+      Math.ceil(expectedSegments.length * 0.5),
+      6
+    )
   );
 
   if (completeCoreItems < minimumCoreItems) {
