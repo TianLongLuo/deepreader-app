@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react';
 import { ReactReader, ReactReaderStyle } from 'react-reader';
-import { BookOpenText, BookmarkPlus, Menu } from 'lucide-react';
+import { BookOpenText, BookmarkPlus, Maximize2, Menu, Minimize2 } from 'lucide-react';
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
@@ -1105,6 +1105,7 @@ export default function ReaderLayout({
   } | null>(null);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [immersive, setImmersive] = useState(false);
   const [pdfPageJumpValue, setPdfPageJumpValue] = useState('');
   const [userBookmarks, setUserBookmarks] = useState<UserBookmark[]>(() =>
     readStoredBookmarks(currentUser.id, document.id)
@@ -1687,6 +1688,21 @@ export default function ReaderLayout({
   }, [clearActiveParagraph, clearUnderlineAnnotations]);
 
   useEffect(() => {
+    if (!immersive) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setImmersive(false);
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [immersive]);
+
+  useEffect(() => {
     if (document.fileType !== 'PDF') {
       return;
     }
@@ -2255,22 +2271,36 @@ export default function ReaderLayout({
   return (
     <div
       ref={containerRef}
-      className={`relative flex h-[calc(100vh-4rem)] w-full overflow-hidden ${theme === 'dark'
+      className={`${immersive
+        ? 'fixed inset-0 z-[60] flex w-full overflow-hidden'
+        : 'relative flex h-screen w-full overflow-hidden'} ${theme === 'dark'
         ? 'bg-[radial-gradient(circle_at_12%_10%,rgba(251,191,36,0.12),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(251,146,60,0.10),transparent_28%),#1c120d]'
         : 'bg-[radial-gradient(circle_at_12%_10%,rgba(251,191,36,0.28),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(251,146,60,0.22),transparent_28%),linear-gradient(135deg,#fff7ed_0%,#fffbeb_55%,#fff1e6_100%)]'} ${themeClasses[theme]}`}
     >
       {document.fileType === 'EPUB' || document.fileType === 'PDF' ? (
         <>
+          {!immersive && (
+            <button
+              type="button"
+              className="absolute left-5 top-5 z-30 rounded-2xl border border-orange-200 bg-white/75 p-2 text-orange-900 shadow-lg shadow-orange-200/40 backdrop-blur-md dark:border-orange-300/15 dark:bg-[#1c120d]/75 dark:text-orange-100 dark:shadow-none"
+              onClick={() => setDrawerOpen((current) => !current)}
+              aria-label="Toggle contents and bookmarks"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          )}
+
           <button
             type="button"
-            className="absolute left-5 top-5 z-30 rounded-2xl border border-orange-200 bg-white/75 p-2 text-orange-900 shadow-lg shadow-orange-200/40 backdrop-blur-md dark:border-orange-300/15 dark:bg-[#1c120d]/75 dark:text-orange-100 dark:shadow-none"
-            onClick={() => setDrawerOpen((current) => !current)}
-            aria-label="Toggle contents and bookmarks"
+            className="absolute right-5 top-5 z-30 rounded-2xl border border-orange-200 bg-white/75 p-2 text-orange-900 shadow-lg shadow-orange-200/40 backdrop-blur-md transition-colors hover:bg-orange-100 dark:border-orange-300/15 dark:bg-[#1c120d]/75 dark:text-orange-100 dark:shadow-none dark:hover:bg-orange-300/10"
+            onClick={() => setImmersive((current) => !current)}
+            aria-label={immersive ? 'Exit fullscreen' : 'Enter fullscreen'}
+            title={immersive ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
           >
-            <Menu className="h-5 w-5" />
+            {immersive ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
           </button>
 
-          {drawerOpen ? (
+          {!immersive && drawerOpen ? (
             <>
               <button
                 type="button"
@@ -2525,7 +2555,7 @@ export default function ReaderLayout({
       </div>
 
       {selectedParagraph ? (
-        <div className="absolute inset-0 z-20">
+        <div className="absolute inset-0 z-30">
           <button
             type="button"
             aria-label="Close explanation"
