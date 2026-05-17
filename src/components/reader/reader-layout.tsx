@@ -2279,26 +2279,44 @@ export default function ReaderLayout({
     >
       {document.fileType === 'EPUB' || document.fileType === 'PDF' ? (
         <>
-          {!immersive && (
-            <button
-              type="button"
-              className="absolute left-5 top-5 z-30 rounded-2xl border border-orange-200 bg-white/75 p-2 text-orange-900 shadow-lg shadow-orange-200/40 backdrop-blur-md dark:border-orange-300/15 dark:bg-[#1c120d]/75 dark:text-orange-100 dark:shadow-none"
-              onClick={() => setDrawerOpen((current) => !current)}
-              aria-label="Toggle contents and bookmarks"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
+          {!immersive ? (
+            <div className="absolute left-1/2 top-5 z-30 -translate-x-1/2">
+              <div className="flex items-center gap-1.5 rounded-full border border-orange-200/60 bg-white/80 px-3 py-1.5 shadow-lg shadow-orange-200/25 backdrop-blur-2xl dark:border-orange-300/15 dark:bg-[#1c120d]/80 dark:shadow-none">
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-orange-900/75 transition-colors hover:bg-orange-100 dark:text-orange-100/75 dark:hover:bg-orange-300/10"
+                  onClick={() => setDrawerOpen((current) => !current)}
+                  aria-label="Toggle contents and bookmarks"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                <div className="h-4 w-px bg-orange-200/50 dark:bg-orange-300/15" />
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-orange-900/75 transition-colors hover:bg-orange-100 dark:text-orange-100/75 dark:hover:bg-orange-300/10"
+                  onClick={() => setImmersive(true)}
+                  aria-label="Enter fullscreen"
+                  title="Enter fullscreen"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="absolute right-5 top-5 z-30 opacity-0 transition-opacity duration-300 hover:opacity-100">
+              <div className="flex items-center gap-1.5 rounded-full border border-orange-200/60 bg-white/80 px-2.5 py-1.5 shadow-lg shadow-orange-200/25 backdrop-blur-2xl dark:border-orange-300/15 dark:bg-[#1c120d]/80 dark:shadow-none">
+                <button
+                  type="button"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-orange-900/75 transition-colors hover:bg-orange-100 dark:text-orange-100/75 dark:hover:bg-orange-300/10"
+                  onClick={() => setImmersive(false)}
+                  aria-label="Exit fullscreen"
+                  title="Exit fullscreen (Esc)"
+                >
+                  <Minimize2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
           )}
-
-          <button
-            type="button"
-            className="absolute right-5 top-5 z-30 rounded-2xl border border-orange-200 bg-white/75 p-2 text-orange-900 shadow-lg shadow-orange-200/40 backdrop-blur-md transition-colors hover:bg-orange-100 dark:border-orange-300/15 dark:bg-[#1c120d]/75 dark:text-orange-100 dark:shadow-none dark:hover:bg-orange-300/10"
-            onClick={() => setImmersive((current) => !current)}
-            aria-label={immersive ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title={immersive ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
-          >
-            {immersive ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-          </button>
 
           {!immersive && drawerOpen ? (
             <>
