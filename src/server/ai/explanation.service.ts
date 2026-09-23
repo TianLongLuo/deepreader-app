@@ -839,7 +839,7 @@ export class AIExplanationService {
 
     // Fetch the paragraph with context
     const paragraph = await prisma.paragraph.findUnique({
-      where: { id: paragraphId },
+      where: { id: paragraphId, document: { workspaceId, status: { not: 'DELETED' } } },
       include: {
         document: true,
         sentences: { orderBy: { orderIndex: 'asc' } },
@@ -861,6 +861,7 @@ export class AIExplanationService {
     if (!forceRegenerate) {
       const existingExplanation = await this.getExplanation(
         paragraphId,
+        workspaceId,
         requestSettingsHash
       );
       if (existingExplanation) {
@@ -926,7 +927,7 @@ export class AIExplanationService {
     const { paragraphId, forceRegenerate = false } = request;
 
     const paragraph = await prisma.paragraph.findUnique({
-      where: { id: paragraphId },
+      where: { id: paragraphId, document: { workspaceId, status: { not: 'DELETED' } } },
       include: {
         document: true,
         sentences: { orderBy: { orderIndex: 'asc' } },
@@ -950,6 +951,7 @@ export class AIExplanationService {
     if (!forceRegenerate) {
       const existingExplanation = await this.getExplanation(
         paragraphId,
+        workspaceId,
         requestSettingsHash
       );
       if (existingExplanation) {
@@ -1257,11 +1259,13 @@ No markdown. No extra text.
    */
   async getExplanation(
     paragraphId: string,
+    workspaceId: string,
     settingsHash?: string
   ): Promise<ExplanationResponse | null> {
     const explanation = await prisma.paragraphExplanation.findFirst({
       where: {
         paragraphId,
+        paragraph: { document: { workspaceId, status: { not: 'DELETED' } } },
         ...(settingsHash ? { settingsHash } : {}),
         status: 'COMPLETED',
       },

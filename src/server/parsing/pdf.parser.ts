@@ -5,7 +5,6 @@ import { segmentParagraphs } from './segmentation';
 
 const log = createChildLogger('pdf-parser');
 const PAGE_BREAK_MARKER = '---PAGE_BREAK---';
-const MIN_PDF_BLOCK_LENGTH = 6;
 
 function ensureNodePdfCanvasGlobals() {
   const canvas = require('@napi-rs/canvas');
@@ -56,7 +55,7 @@ function splitPdfPageIntoBlocks(pageText: string) {
   const blocks = normalizedPage
     .split(/\n{2,}/)
     .map(normalizePdfBlock)
-    .filter((block) => block.replace(/\s+/g, '').length >= MIN_PDF_BLOCK_LENGTH);
+    .filter((block) => block.trim().length > 0);
 
   return blocks.length > 0 ? blocks : [normalizedPage];
 }
@@ -111,7 +110,7 @@ export class PdfParser {
         const paragraphs = splitPdfPageIntoBlocks(pageText);
 
         for (const rawText of paragraphs) {
-          if (normalizeForAnalysis(rawText).length > 5) { // Skip very short artifacts
+          if (normalizeForAnalysis(rawText).length > 0) {
              const seg = segmentParagraphs(rawText);
              currentParagraphs.push({
                rawText,

@@ -93,9 +93,9 @@ export class DocumentService {
   /**
    * Get paragraphs for a specific section.
    */
-  async getParagraphs(sectionId: string) {
+  async getParagraphs(sectionId: string, workspaceId: string) {
     return prisma.paragraph.findMany({
-      where: { sectionId },
+      where: { sectionId, document: { workspaceId, status: { not: 'DELETED' } } },
       orderBy: { orderIndex: 'asc' },
       include: {
         sentences: { orderBy: { orderIndex: 'asc' } }

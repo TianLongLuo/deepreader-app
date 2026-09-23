@@ -7,13 +7,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
-    // Assuming anyone auth'd can read sections, can refine access control later.
+    const user = await requireAuth();
+    if (!user.workspaceId) {
+      return NextResponse.json({ error: 'No workspace attached' }, { status: 400 });
+    }
 
     const resolvedParams = await params;
     const sectionId = resolvedParams.id;
     
-    const paragraphs = await documentService.getParagraphs(sectionId);
+    const paragraphs = await documentService.getParagraphs(sectionId, user.workspaceId);
     
     return NextResponse.json({ paragraphs });
   } catch (error) {

@@ -44,7 +44,7 @@ function flattenPdfSections(sections: ParsedSection[]) {
         .replace(/\s+/g, ' ')
         .trim();
 
-      if (analysisText.length < 20) {
+      if (!analysisText) {
         return;
       }
 

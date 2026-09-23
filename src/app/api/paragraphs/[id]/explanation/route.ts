@@ -33,7 +33,7 @@ export async function GET(
     const resolvedParams = await params;
     const paragraphId = resolvedParams.id;
     
-    const explanation = await aiExplanationService.getExplanation(paragraphId);
+    const explanation = await aiExplanationService.getExplanation(paragraphId, user.workspaceId);
     
     if (!explanation) {
       return NextResponse.json({ error: 'Explanation not found' }, { status: 404 });

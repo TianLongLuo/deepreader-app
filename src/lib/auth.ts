@@ -30,6 +30,12 @@ export async function registerUser(
   password: string,
   name?: string
 ): Promise<AuthUser> {
+  // This address has privileged access throughout the application. It must be
+  // provisioned by the operator, never claimed through public registration.
+  if (appConfigService.isPrimaryAdminEmail(email)) {
+    throw new Error('This email is reserved for the administrator');
+  }
+
   const publicConfig = await appConfigService.getPublicConfig();
   if (!publicConfig.allowRegistrations) {
     throw new Error('Registration is currently closed');

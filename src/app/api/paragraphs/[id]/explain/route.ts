@@ -16,17 +16,21 @@ export async function POST(
     const paragraphId = resolvedParams.id;
     
     // Parse body for options
-    let opts: Record<string, any> = {};
+    let opts: Record<string, unknown> = {};
     try {
-        opts = await req.json();
+        const body: unknown = await req.json();
+        if (body && typeof body === 'object' && !Array.isArray(body)) {
+          opts = body as Record<string, unknown>;
+        }
     } catch {}
 
     if (opts.stream) {
       const encoder = new TextEncoder();
-      const { stream: _stream, ...streamOptions } = opts;
+      const streamOptions = { ...opts };
+      delete streamOptions.stream;
       const explanationRequest = {
-        paragraphId,
         ...streamOptions,
+        paragraphId,
       };
 
       return new Response(
@@ -69,8 +73,8 @@ export async function POST(
     const explanation = await aiExplanationService.explain(
       user.workspaceId,
       {
-        paragraphId,
-        ...opts
+        ...opts,
+        paragraphId
       },
       user.email
     );

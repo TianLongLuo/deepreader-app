@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { documentService } from '@/server/documents/document.service';
-import { MAX_DOCUMENT_UPLOAD_BYTES, MAX_DOCUMENT_UPLOAD_MB } from '@/lib/upload-config';
+import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/upload-config';
 
-const MAX_UPLOAD_SIZE = process.env.MAX_UPLOAD_SIZE
-  ? parseInt(process.env.MAX_UPLOAD_SIZE)
+const configuredUploadSize = Number(process.env.MAX_UPLOAD_SIZE);
+const MAX_UPLOAD_SIZE = Number.isSafeInteger(configuredUploadSize) && configuredUploadSize > 0
+  ? configuredUploadSize
   : MAX_DOCUMENT_UPLOAD_BYTES;
 
 export async function POST(req: Request) {
@@ -15,14 +16,14 @@ export async function POST(req: Request) {
     }
 
     const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get('file');
     
-    if (!file) {
+    if (!file || typeof file === 'string') {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
     if (file.size > MAX_UPLOAD_SIZE) {
-      return NextResponse.json({ error: `File too large, max size is ${MAX_DOCUMENT_UPLOAD_MB}MB` }, { status: 413 });
+      return NextResponse.json({ error: `File too large, max size is ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB` }, { status: 413 });
     }
 
     const title = file.name;

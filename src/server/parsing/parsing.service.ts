@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { createChildLogger } from '@/lib/logger';
 import { getStorageProvider } from '../storage';
 import { pdfParser } from './pdf.parser';
@@ -42,22 +43,23 @@ export class ParsingService {
         throw new Error(`Unsupported file type: ${doc.fileType}`);
       }
 
-      // 4. Save structure to database
-      await this.saveParsedDocument(documentId, parsedDoc);
-
-      // 5. Update document status
-      await prisma.document.update({
-        where: { id: documentId },
-        data: {
-          parseStatus: 'COMPLETED',
-          status: 'ACTIVE',
-          pageCount: parsedDoc.pageCount || doc.pageCount,
-          language: parsedDoc.language || doc.language,
-          metadataJson: parsedDoc.metadata
-            ? JSON.stringify(parsedDoc.metadata)
-            : undefined,
-        }
-      });
+      // Commit the replacement structure and completed status together. A failed
+      // insert must leave the previous text and its explanations intact.
+      await prisma.$transaction(async (tx) => {
+        await this.saveParsedDocument(tx, documentId, parsedDoc);
+        await tx.document.update({
+          where: { id: documentId },
+          data: {
+            parseStatus: 'COMPLETED',
+            status: 'ACTIVE',
+            pageCount: parsedDoc.pageCount || doc.pageCount,
+            language: parsedDoc.language || doc.language,
+            metadataJson: parsedDoc.metadata
+              ? JSON.stringify(parsedDoc.metadata)
+              : undefined,
+          }
+        });
+      }, { timeout: 60_000 });
 
       log.info({ documentId }, 'Document processing completed successfully');
 
@@ -73,24 +75,28 @@ export class ParsingService {
     }
   }
 
-  private async saveParsedDocument(documentId: string, parsedDoc: ParsedDocument) {
+  private async saveParsedDocument(
+    tx: Prisma.TransactionClient,
+    documentId: string,
+    parsedDoc: ParsedDocument
+  ) {
     // Delete existing sections/paragraphs if this is a re-parse
-    await prisma.documentSection.deleteMany({ where: { documentId } });
-    await prisma.paragraph.deleteMany({ where: { documentId } });
+    await tx.documentSection.deleteMany({ where: { documentId } });
+    await tx.paragraph.deleteMany({ where: { documentId } });
 
-    // Use transaction for bulk inserts where possible, but given the nested structure,
-    // we'll insert sections, then paragraphs iteratively to get their IDs.
+    // Insert sections, then paragraphs iteratively to get their IDs.
     
     let globalParagraphOrder = 0;
 
     for (const section of parsedDoc.sections) {
-      await this.saveSectionRecursive(documentId, null, section, globalParagraphOrder);
-      // approximate order advance
-      globalParagraphOrder += section.paragraphs.length; 
+      globalParagraphOrder = await this.saveSectionRecursive(
+        tx, documentId, null, section, globalParagraphOrder
+      );
     }
   }
 
   private async saveSectionRecursive(
+    tx: Prisma.TransactionClient,
     documentId: string, 
     parentSectionId: string | null, 
     parsedSection: ParsedSection,
@@ -98,7 +104,7 @@ export class ParsingService {
   ): Promise<number> {
     
     // Create section
-    const sectionRecord = await prisma.documentSection.create({
+    const sectionRecord = await tx.documentSection.create({
       data: {
         documentId,
         parentSectionId,
@@ -123,7 +129,7 @@ export class ParsingService {
         endOffset: p.rawText.length
       }));
 
-      await prisma.paragraph.createMany({
+      await tx.paragraph.createMany({
         data: paragraphDataArr
       });
 
@@ -131,7 +137,7 @@ export class ParsingService {
       for (let i = 0; i < parsedSection.paragraphs.length; i++) {
         const sentences = parsedSection.paragraphs[i].sentences;
         if (sentences.length > 0) {
-            await prisma.sentence.createMany({
+            await tx.sentence.createMany({
                 data: sentences.map((s, s_idx) => ({
                     paragraphId: paragraphDataArr[i].id,
                     orderIndex: s_idx,
@@ -150,6 +156,7 @@ export class ParsingService {
     // Process children recursively
     for (const child of parsedSection.children) {
       nextParagraphOrder = await this.saveSectionRecursive(
+        tx,
         documentId, 
         sectionRecord.id, 
         child, 
