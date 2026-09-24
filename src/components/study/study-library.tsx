@@ -228,7 +228,7 @@ export default function StudyLibrary() {
           )}
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <Link
-              href={`/reader/${item.document.id}${item.location ? `?location=${encodeURIComponent(item.location)}` : ""}`}
+              href={`/reader/${item.document.id}?sourceLanguage=${savedSourceLanguage(item.note)}${item.location ? `&location=${encodeURIComponent(item.location)}` : ""}`}
               className="underline"
             >
               Back to original

@@ -70,7 +70,7 @@ const instructions = {
   summary:
     "Summarize ONLY the supplied excerpt/chapter portion. Explicitly state the limited scope. Never imply you read the entire book.",
   quiz: "Create 3 reading comprehension questions from ONLY the supplied excerpt/chapter portion. Each answer needs an exact supporting quote. State the limited scope.",
-  word: "Explain the selected source-language word or phrase in the preferred output language, identify its meaning in the supplied context, pronunciation if known, part of speech, and common usage. Distinguish general definitions from contextual inference.",
+  word: "Explain the selected source-language word or phrase in the preferred output language, identify its meaning in the supplied context, pronunciation if known, part of speech, and common usage. Identify the lemma/infinitive and, when applicable, the selected form’s conjugation (person, number, tense and mood), gender and agreement. Include useful collocations, a short clearly labeled invented example with translation, and synonyms/antonyms only when they fit this sense. Do not invent lexical facts, pronunciation, antonyms, or an unambiguous lemma when multiple analyses are possible; state uncertainty. Distinguish general definitions from contextual inference.",
 };
 
 export function parseGroundedAnswer(

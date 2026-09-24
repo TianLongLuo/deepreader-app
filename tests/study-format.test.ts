@@ -79,3 +79,12 @@ it("supports the reader AI explanation field and missing-dictionary message", ()
   expect(value).toContain("AI meaning in context\nAI explanation");
   expect(value).toContain("No dictionary definition was available");
 });
+
+it("keeps dictionary attribution and license in readable exports", () => {
+  const value = readableNote("word", JSON.stringify({provider:"Wiktionary", sourceUrl:"https://en.wiktionary.org/wiki/corazón#Spanish", licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0/", attribution:"Wiktionary contributors", definitionLanguage:"en"}));
+  expect(value).toContain("Dictionary: Wiktionary");
+  expect(value).toContain("Attribution: Wiktionary contributors");
+  expect(value).toContain("Source: https://en.wiktionary.org/wiki/corazón#Spanish");
+  expect(value).toContain("License: https://creativecommons.org/licenses/by-sa/4.0/");
+  expect(value).toContain("Definition language: en");
+});

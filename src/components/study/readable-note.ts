@@ -49,6 +49,11 @@ export function readableNote(kind: string, note: string): string {
             .join("\n"),
         );
     }
+    if (string(data.provider)) parts.push(`Dictionary: ${string(data.provider)}`);
+    if (string(data.definitionLanguage)) parts.push(`Definition language: ${string(data.definitionLanguage)}`);
+    if (string(data.attribution)) parts.push(`Attribution: ${string(data.attribution)}`);
+    if (string(data.sourceUrl)) parts.push(`Source: ${string(data.sourceUrl)}`);
+    if (string(data.licenseUrl)) parts.push(`License: ${string(data.licenseUrl)}`);
     const ai =
       string(data.aiExplanation) ||
       string(record(data.aiExplanation)?.answer) ||

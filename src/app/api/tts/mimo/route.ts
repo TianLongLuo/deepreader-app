@@ -5,13 +5,18 @@ import { z } from 'zod';
 
 const ttsRequestSchema = z.object({
   text: z.string().min(1).max(1200),
+  sourceLanguage: z.enum(['en', 'es']).default('en'),
 });
 
 export async function POST(req: Request) {
   try {
     await requireAuth();
     const body = await req.json();
-    const { text } = ttsRequestSchema.parse(body);
+    const { text, sourceLanguage } = ttsRequestSchema.parse(body);
+    // The configured legacy MiMo voice is English. Never silently use it for Spanish.
+    if (sourceLanguage === 'es') {
+      return NextResponse.json({error:'请使用设备上的西班牙语语音朗读。', code:'USE_DEVICE_SPANISH_VOICE'}, {status:422});
+    }
     const result = await mimoTTSService.synthesize(text);
 
     return new Response(new Uint8Array(result.audio), {

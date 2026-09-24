@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
@@ -173,6 +174,37 @@ it("validates bounded data and blocks injected identity fields", () => {
   expect(csvCell("=SUM(A1)")).toBe(`"'=SUM(A1)"`);
   expect(csvCell("  +123")).toBe(`"'  +123"`);
   expect(csvCell('hello,"friend"')).toBe('"hello,""friend"""');
+});
+it("keeps Spanish homographs separate from English and enriches repeated saves without resetting review", async () => {
+  const common = {kind:"word", text:"pie", location:"epubcfi(/languages)"};
+  const english = await readingService.create("alice","owner","doc",common);
+  const spanish = await readingService.create("alice","owner","doc",{...common,note:JSON.stringify({sourceLanguage:"es",meanings:[]})});
+  expect(spanish.id).not.toBe(english.id);
+  await readingService.review("alice","owner",{entryId:spanish.id,rating:"good"});
+  const enriched = await readingService.create("alice","owner","doc",{...common,note:JSON.stringify({sourceLanguage:"es",aiExplanation:"pie significa foot"})});
+  expect(enriched.id).toBe(spanish.id);
+  expect(enriched.note).toContain("foot");
+  expect(enriched.reviewCount).toBe(1);
+  expect((await readingService.create("alice","owner","doc",common)).id).toBe(english.id);
+  const unicode = {kind:"word",location:"epubcfi(/accent)",note:JSON.stringify({sourceLanguage:"es"})};
+  const nfc = await readingService.create("alice","owner","doc",{...unicode,text:"corazón"});
+  const nfd = await readingService.create("alice","owner","doc",{...unicode,text:"corazo\u0301n"});
+  expect(nfd.id).toBe(nfc.id);
+  expect(nfd.text).toBe("corazón");
+});
+it("preserves legacy Spanish word ids and review history when English homographs are added", async () => {
+  const location="epubcfi(/legacy-es)";
+  const legacy = await prisma.readingEntry.create({data:{
+    userId:"alice",documentId:"doc",kind:"word",text:"red",location,
+    note:JSON.stringify({sourceLanguage:"es",aiExplanation:"network"}),reviewCount:3,
+    dedupKey:createHash("sha256").update(JSON.stringify(["alice","doc","word","red",location])).digest("hex"),
+  }});
+  const english=await readingService.create("alice","owner","doc",{kind:"word",text:"red",location,note:JSON.stringify({sourceLanguage:"en",aiExplanation:"color"})});
+  const spanish=await readingService.create("alice","owner","doc",{kind:"word",text:"red",location,note:JSON.stringify({sourceLanguage:"es",aiExplanation:"una red"})});
+  expect(english.id).not.toBe(legacy.id);
+  expect(spanish.id).toBe(legacy.id);
+  expect(spanish.reviewCount).toBe(3);
+  expect(spanish.note).toContain("una red");
 });
 it("deduplicates concurrent saves and cascades entries and progress on document deletion", async () => {
   await prisma.document.create({

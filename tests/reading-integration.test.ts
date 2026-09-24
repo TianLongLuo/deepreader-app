@@ -101,3 +101,9 @@ it("returns bounded search snippets with stable original locations", () => {
       .results,
   ).toHaveLength(1);
 });
+it("finds equivalent Spanish accent encodings without merging ñ and n", () => {
+  const entries=[{text:"El corazo\u0301n del niño.",location:"capitulo.xhtml#uno"}];
+  expect(matchEntries(entries,"CORAZÓN").results[0]).toMatchObject({text:"El corazón del niño.",location:"capitulo.xhtml#uno"});
+  expect(matchEntries(entries,"nin\u0303o").results).toHaveLength(1);
+  expect(matchEntries(entries,"nino").results).toHaveLength(0);
+});

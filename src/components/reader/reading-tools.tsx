@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { speakInBrowser } from "./language-tools";
 import { useReaderStore } from "@/hooks/use-reader-store";
 
 export type ReadingEntry = {
@@ -27,6 +28,11 @@ type Dictionary = {
   phonetic?: string;
   audioUrl?: string;
   sourceUrl?: string;
+  source?: string;
+  provider?: string;
+  licenseUrl?: string;
+  attribution?: string;
+  definitionLanguage?: string;
   meanings: {
     partOfSpeech: string;
     definitions: { definition: string; example?: string }[];
@@ -82,6 +88,7 @@ export default function ReadingTools({
     readingLevel,
     setReadingLevel,
     explanationLanguage,
+    setExplanationLanguage,
     sourceLanguage,
     setSourceLanguage,
   } = useReaderStore();
@@ -239,6 +246,14 @@ export default function ReadingTools({
               setDictionary(null);setWordAnswer(null);setAnswer(null);setHistory([]);setError("");setStatus("");setRevealed([]);setResponses({});
               setSourceLanguage(event.target.value as "en"|"es");
             }}><option value="en">英语 · English</option><option value="es">西班牙语 · Español</option></select>
+          </label>
+          <label className="flex items-center justify-between gap-3 border-b border-orange-200 px-4 py-3 text-sm">
+            讲解语言
+            <select aria-label="讲解语言" className="rounded-lg border border-orange-200 bg-white px-3 py-2" value={explanationLanguage} onChange={event=>{
+              controller.current?.abort();setBusy(false);lastAction.current=null;
+              setWordAnswer(null);setAnswer(null);setHistory([]);setError("");setStatus("");setRevealed([]);setResponses({});
+              setExplanationLanguage(event.target.value);
+            }}><option value="Chinese">中文</option><option value="English">English</option><option value="Spanish">Español</option></select>
           </label>
           <nav className="flex flex-wrap gap-1 border-b border-orange-200 p-3">
             {[
@@ -464,12 +479,10 @@ export default function ReadingTools({
             )}
             {tab === "dictionary" && (
               <>
-                {sourceLanguage === "es" && <p className="rounded-xl bg-orange-100 p-3 text-sm">西班牙语使用 AI 语境释义。请点击「AI 语境释义」，结合原文解释单词、变位和用法；AI 内容会单独标明。</p>}
                 <form
                   className="flex gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (sourceLanguage === "es") return;
                     void perform(async (signal) => {
                       const data = await readingRequest(
                         `/api/dictionary?word=${encodeURIComponent(word.trim().normalize("NFC"))}&language=${sourceLanguage}`,
@@ -495,8 +508,9 @@ export default function ReadingTools({
                     }}
                     placeholder={sourceLanguage === "es" ? "输入西班牙语单词，如 corazón" : "输入英文单词"}
                   />
-                  {sourceLanguage === "en" && <button className={button} disabled={!word.trim() || busy}>查词</button>}
+                  <button className={button} disabled={!word.trim() || busy}>查词</button>
                 </form>
+                <button type="button" className={button} disabled={!word.trim()} onClick={()=>{setError("");void speakInBrowser(word.trim(),sourceLanguage).catch(error=>setError(error.message));}}>朗读单词</button>
                 {dictionary && (
                   <div className="space-y-3 rounded-xl bg-white p-4">
                     <h3 className="text-xl font-bold">
@@ -505,33 +519,8 @@ export default function ReadingTools({
                         {dictionary.phonetic}
                       </span>
                     </h3>
-                    <p className="text-xs text-orange-700">词典 · {sourceLanguage === "es" ? "西班牙语" : "英语"}释义</p>
-                    {dictionary.audioUrl ? (
-                      <audio
-                        controls
-                        src={dictionary.audioUrl}
-                        className="max-w-full"
-                      />
-                    ) : (
-                      <button
-                        className={button}
-                        onClick={() => {
-                          if (!("speechSynthesis" in window)) {
-                            setError(
-                              "此浏览器不支持朗读，请使用词典音频或换用支持语音的浏览器",
-                            );
-                            return;
-                          }
-                          const u = new SpeechSynthesisUtterance(
-                            dictionary.word,
-                          );
-                          u.lang = sourceLanguage === "es" ? "es-ES" : "en-US";
-                          speechSynthesis.speak(u);
-                        }}
-                      >
-                        朗读单词
-                      </button>
-                    )}
+                    <p className="text-xs text-orange-700">词典 · {sourceLanguage === "es" ? "西班牙语词条" : "英语词条"}{dictionary.definitionLanguage === "en" ? " · 英文释义" : ""}</p>
+                    {dictionary.audioUrl && <audio controls src={dictionary.audioUrl} className="max-w-full"/>}
                     {dictionary.meanings.map((m, i) => (
                       <section key={i}>
                         <h4 className="text-sm font-semibold">
@@ -549,6 +538,8 @@ export default function ReadingTools({
                         ))}
                       </section>
                     ))}
+                    {dictionary.attribution && <p className="text-xs text-orange-800">{dictionary.attribution}</p>}
+                    {dictionary.licenseUrl && <a href={dictionary.licenseUrl} target="_blank" rel="noreferrer" className="block text-xs underline">CC BY-SA 许可</a>}
                     {dictionary.sourceUrl && (
                       <a
                         href={dictionary.sourceUrl}
@@ -556,7 +547,7 @@ export default function ReadingTools({
                         rel="noreferrer"
                         className="text-xs underline"
                       >
-                        词典来源
+                        {dictionary.source || "词典来源"}
                       </a>
                     )}
                   </div>
@@ -607,7 +598,7 @@ export default function ReadingTools({
                 )}
                 {!dictionary && (
                   <p className="text-xs text-orange-800">
-                    {sourceLanguage === "es" ? "可直接保存西班牙语单词与原句，并通过 AI 语境释义补充含义和用法。" : "词典释义暂缺。仍可保存单词与原句，稍后补查；AI 释义会单独标明。"}
+                    词典释义暂缺。仍可保存单词与原句，稍后补查；AI 释义会单独标明。
                   </p>
                 )}
                 <button
@@ -634,6 +625,11 @@ export default function ReadingTools({
                             ? wordAnswer.answer.answer
                             : undefined,
                         dictionaryAvailable: Boolean(dictionary),
+                        provider: dictionary?.provider || dictionary?.source,
+                        sourceUrl: dictionary?.sourceUrl,
+                        licenseUrl: dictionary?.licenseUrl,
+                        attribution: dictionary?.attribution,
+                        definitionLanguage: dictionary?.definitionLanguage,
                         sourceLanguage,
                       }),
                     )
@@ -748,7 +744,8 @@ export default function ReadingTools({
                         <button
                           className={button}
                           onClick={() => {
-                            onJump(item.location!);
+                            if (item.kind === "word" || item.kind === "chat") {try {setSourceLanguage(JSON.parse(item.note || "{}").sourceLanguage === "es" ? "es" : "en");} catch {setSourceLanguage("en");}}
+                              onJump(item.location!);
                             close();
                           }}
                         >

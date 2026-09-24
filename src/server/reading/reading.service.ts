@@ -83,22 +83,34 @@ export const readingService = {
     input: unknown,
   ) {
     const data = entrySchema.parse(input);
+    if (data.kind === "word") data.text = data.text.normalize("NFC");
     await requireDocument(documentId, workspaceId);
     if (data.kind === "bookmark" || data.kind === "word") {
-      const dedupKey = createHash("sha256")
-        .update(
-          JSON.stringify([
-            userId,
-            documentId,
-            data.kind,
-            data.text,
-            data.location,
-          ]),
-        )
-        .digest("hex");
+      // Preserve legacy English keys while keeping Spanish homographs independent.
+      let sourceLanguage = "en";
+      if (data.kind === "word") {
+        try {
+          const metadata = JSON.parse(data.note);
+          if (metadata?.sourceLanguage === "es") sourceLanguage = "es";
+        } catch { /* Legacy plain-text notes are English. */ }
+      }
+      const keyParts = [userId, documentId, data.kind, data.text, data.location];
+      const keyFor = (language?: string) => createHash("sha256")
+        .update(JSON.stringify([...keyParts, ...(language ? [language] : [])])).digest("hex");
+      const legacyKey = keyFor();
+      let dedupKey = sourceLanguage === "es" ? keyFor("es") : legacyKey;
+      if (data.kind === "word") {
+        // The first multilingual release saved Spanish under the untagged key.
+        // Keep its id and review history without allowing English to overwrite it.
+        const legacy = await prisma.readingEntry.findUnique({where:{dedupKey:legacyKey},select:{note:true}});
+        let legacyLanguage = "en";
+        try { if (legacy && JSON.parse(legacy.note)?.sourceLanguage === "es") legacyLanguage = "es"; } catch {}
+        if (legacy && legacyLanguage === "es") dedupKey = sourceLanguage === "es" ? legacyKey : keyFor("en");
+      }
       return prisma.readingEntry.upsert({
         where: { dedupKey },
-        update: {},
+        // A later dictionary/AI lookup can enrich a word saved while offline.
+        update: data.kind === "word" && data.note.trim() ? { note: data.note } : {},
         create: {
           userId,
           documentId,

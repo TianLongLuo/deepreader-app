@@ -12,7 +12,6 @@ import {
   ExplanationRequest,
   ExplanationResponse,
   ParagraphExplanationOutput,
-  GrammarNote,
   SentenceBreakdown,
   SentenceRole,
   VocabularyNote,
@@ -22,7 +21,7 @@ const log = createChildLogger('explanation-service');
 const CORE_EXPLANATION_MAX_TOKENS = DEEPSEEK_V4_MAX_OUTPUT_TOKENS;
 const REPAIR_EXPLANATION_MAX_TOKENS = DEEPSEEK_V4_MAX_OUTPUT_TOKENS;
 const EXPLANATION_TEMPERATURE = 0.1;
-const EXPLANATION_STRUCTURE_VERSION = 'core-v14-source-language';
+const EXPLANATION_STRUCTURE_VERSION = 'core-v15-multilingual-grounding';
 const RESPONSE_GUARDRAILS = `
 Return only one valid JSON object.
 Keep it short. Do not include tone notes or reading tips unless essential.
@@ -67,7 +66,7 @@ export function buildCoreSystemPrompt(bilingualMode: boolean, sourceLanguage: 'e
   if (sourceLanguage === 'es') return buildSpanishSystemPrompt(bilingualMode, explanationLanguage);
   const languageInstruction = bilingualMode
     ? 'Write learner-facing explanations in concise Simplified Chinese. Keep source phrases in English. vocabulary_notes.translation must be Chinese.'
-    : 'Write learner-facing explanations in concise English.';
+    : `Write learner-facing explanations in concise ${JSON.stringify(explanationLanguage)}; keep all source phrases unchanged.`;
 
   return `
 You are a fast reading assistant for English paragraphs.
@@ -230,11 +229,16 @@ function getStructureCompletenessIssue(
   paragraphText: string,
   sourceLanguage: 'en' | 'es' = 'en'
 ) {
-  const expectedSegments = sourceLanguage === 'es' ? (paragraphText.match(/[^.!?]+[.!?]+|[^.!?]+$/gu) || []).map(x => x.trim()).filter(Boolean).slice(0, 18) : getExpectedStructureSegments(paragraphText);
+  const expectedSegments = sourceLanguage === 'es' ? Array.from(new Intl.Segmenter('es', { granularity: 'sentence' }).segment(paragraphText), item => item.segment.trim()).filter(Boolean).slice(0, 18) : getExpectedStructureSegments(paragraphText);
   const actualBreakdown = output.sentence_breakdown || [];
+  if (!output.paragraph_summary?.trim() || !output.plain_meaning?.trim()) return 'Provide a grounded summary and plain meaning, not empty placeholders.';
 
-  if (expectedSegments.length <= 1) {
-    return null;
+  if (!actualBreakdown.length) return 'sentence_breakdown must cover the source paragraph.';
+  for (const item of actualBreakdown) {
+    if (!item.sentence_text || !paragraphText.includes(item.sentence_text)) return 'sentence_text must be an exact source span, preserving accents and punctuation.';
+    for (const field of ['subject_core', 'subject_modifier', 'verb_core', 'verb_modifier', 'object_core', 'object_modifier'] as const) {
+      if (item[field] && !item.sentence_text.includes(item[field]!)) return field + ' must be an exact span of its source sentence; leave omitted subjects empty.';
+    }
   }
 
   if (actualBreakdown.length < Math.min(expectedSegments.length, 4)) {
@@ -261,10 +265,11 @@ function getStructureCompletenessIssue(
   }
 
   const completeCoreItems = actualBreakdown.filter(
-    (item) => (sourceLanguage === 'es' || item.subject_core) && item.verb_core
+    (item) => ((sourceLanguage === 'es' || item.subject_core) && item.verb_core) ||
+      (!item.verb_core && /fragment|nominal|interjecci[oó]n|interjection|无谓语|非谓语句|省略句/i.test(`${item.sentence_pattern || ''} ${item.clause_type || ''}`))
   ).length;
   const minimumCoreItems = Math.max(
-    2,
+    1,
     Math.min(
       Math.ceil(expectedSegments.length * 0.5),
       6
@@ -404,7 +409,7 @@ function normalizeOffsetSearchText(text: string) {
 }
 
 function isWordCharacter(character?: string) {
-  return Boolean(character && /[A-Za-z0-9]/.test(character));
+  return Boolean(character && /[\p{L}\p{M}\p{N}]/u.test(character));
 }
 
 function hasWordBoundary(sourceText: string, start: number, end: number) {
@@ -455,37 +460,7 @@ function findExactTextOffset(
 }
 
 function getUnderlineWordCount(text: string) {
-  return (text.match(/[A-Za-z]+(?:['’][A-Za-z]+)?|\d+/g) || []).length;
-}
-
-function isLowSignalUnderlineText(text: string) {
-  const normalized = normalizeCoverageText(text);
-
-  return (
-    getUnderlineWordCount(text) === 1 &&
-    new Set([
-      'i',
-      'you',
-      'he',
-      'she',
-      'it',
-      'we',
-      'they',
-      'the',
-      'a',
-      'an',
-      'and',
-      'or',
-      'but',
-      'my',
-      'his',
-      'her',
-      'our',
-      'their',
-      'this',
-      'that',
-    ]).has(normalized)
-  );
+  return (text.match(/[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)?|\d+/gu) || []).length;
 }
 
 function alignSentenceRoleOffsets(
@@ -500,13 +475,11 @@ function alignSentenceRoleOffsets(
 
   for (const role of output.sentence_roles || []) {
     const text = role.text?.trim();
-    const roleName = role.role.toLowerCase();
     const normalizedRoleText = normalizeCoverageText(text || '');
     const roleWordCount = getUnderlineWordCount(text || '');
     if (
       !text ||
       seenRoleTexts.has(normalizedRoleText) ||
-      (roleName !== 'subject' && isLowSignalUnderlineText(text)) ||
       roleWordCount > 14 ||
       text.length > 160
     ) {
@@ -524,6 +497,7 @@ function alignSentenceRoleOffsets(
     const proposedText = paragraphText.slice(proposedStart, proposedEnd);
     let start =
       proposedText === text &&
+      hasWordBoundary(paragraphText, proposedStart, proposedEnd) &&
       !rangesOverlap(usedRanges, proposedStart, proposedEnd)
         ? proposedStart
         : findExactTextOffset(
@@ -564,10 +538,6 @@ function alignSentenceRoleOffsets(
     ...output,
     sentence_roles: alignedRoles.slice(0, 48),
   };
-}
-
-function normalizeVerbPhrase(value: string) {
-  return value.replace(/\s+/g, ' ').trim();
 }
 
 function enrichClauseMap(item: SentenceBreakdown) {
@@ -634,88 +604,6 @@ function enrichSentenceBreakdown(breakdown: SentenceBreakdown[] | undefined) {
   }));
 }
 
-function inferVerbTensePattern(verbPhrase: string) {
-  const phrase = normalizeVerbPhrase(verbPhrase);
-  const lower = phrase.toLowerCase();
-
-  if (!phrase) {
-    return null;
-  }
-
-  if (/\b(will|shall)\b/.test(lower)) {
-    return 'future with modal auxiliary';
-  }
-
-  if (/\b(can|could|may|might|must|should|would)\b/.test(lower)) {
-    return 'modal verb phrase';
-  }
-
-  if (/\b(has|have|had)\b.+\b\w+(?:ed|en|ne|wn|lt|pt|ught|ought)\b/.test(lower)) {
-    return lower.includes('had') ? 'past perfect' : 'present perfect';
-  }
-
-  if (/\b(am|is|are|was|were|be|being|been)\b.+\b\w+ing\b/.test(lower)) {
-    return /\b(was|were)\b/.test(lower)
-      ? 'past progressive'
-      : 'present progressive';
-  }
-
-  if (/\b(am|is|are|was|were|be|being|been)\b.+\b\w+(?:ed|en|ne|wn|lt|pt|ught|ought)\b/.test(lower)) {
-    return 'passive voice';
-  }
-
-  if (/\b(was|were|did|had)\b/.test(lower) || /\b\w+ed\b/.test(lower)) {
-    return 'simple past';
-  }
-
-  if (/\b(am|is|are|do|does|has|have)\b/.test(lower) || /\b\w+s\b/.test(lower)) {
-    return 'simple present';
-  }
-
-  return 'verb tense/aspect';
-}
-
-function buildTenseGrammarNotes(
-  output: ParagraphExplanationOutput
-): GrammarNote[] {
-  const existing = output.grammar_notes || [];
-  const hasTenseNote = existing.some((note) =>
-    /tense|aspect|modal|voice|时态|语态|情态/i.test(
-      `${note.pattern} ${note.explanation}`
-    )
-  );
-
-  if (hasTenseNote) {
-    return existing;
-  }
-
-  const seen = new Set<string>();
-  const inferredNotes: GrammarNote[] = [];
-
-  for (const item of output.sentence_breakdown || []) {
-    const verbPhrase = normalizeVerbPhrase(
-      [item.verb_modifier, item.verb_core].filter(Boolean).join(' ')
-    );
-    const tensePattern = inferVerbTensePattern(verbPhrase);
-
-    if (!verbPhrase || !tensePattern || seen.has(verbPhrase.toLowerCase())) {
-      continue;
-    }
-
-    seen.add(verbPhrase.toLowerCase());
-    inferredNotes.push({
-      pattern: `Tense/aspect: ${verbPhrase}`,
-      explanation: `This verb phrase is ${tensePattern}; it helps place the action in time and shows whether the action is ongoing, completed, passive, or modal in the sentence.`,
-    });
-
-    if (inferredNotes.length >= 4) {
-      break;
-    }
-  }
-
-  return [...existing, ...inferredNotes];
-}
-
 function sanitizeExplanationOutput(
   output: ParagraphExplanationOutput,
   paragraphText?: string | null,
@@ -744,7 +632,7 @@ function sanitizeExplanationOutput(
     cleanedOutput.sentence_breakdown = enrichSentenceBreakdown(
       cleanedOutput.sentence_breakdown
     );
-    cleanedOutput.grammar_notes = buildTenseGrammarNotes(cleanedOutput);
+    // Preserve model-supported grammar; English suffix heuristics are not valid for every source language.
     return cleanedOutput;
   }
 
@@ -755,8 +643,7 @@ function sanitizeExplanationOutput(
   structureCompleteOutput.sentence_breakdown = enrichSentenceBreakdown(
     structureCompleteOutput.sentence_breakdown
   );
-  structureCompleteOutput.grammar_notes =
-    buildTenseGrammarNotes(structureCompleteOutput);
+
 
   return alignSentenceRoleOffsets(structureCompleteOutput, paragraphText);
 }

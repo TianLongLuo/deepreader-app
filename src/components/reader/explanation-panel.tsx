@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { BookOpen, Sparkles, Languages, ListTree, Info, RefreshCw, Volume2, Loader2, ChevronDown } from 'lucide-react';
+import { sentencePatternHint, speakInBrowser, type SourceLanguage } from './language-tools';
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { Button } from '@/components/ui/button';
 import type { ParagraphExplanationOutput } from '@/types/explanation';
@@ -298,7 +299,7 @@ function findStructureTokenStart(
     .toLowerCase();
   const starts = [from, 0];
   const isWordCharacter = (character?: string) =>
-    Boolean(character && /[A-Za-z0-9]/.test(character));
+    Boolean(character && /[\p{L}\p{M}\p{N}]/u.test(character));
   const hasWordBoundary = (start: number, end: number) => {
     const first = sourceText[start];
     const last = sourceText[end - 1];
@@ -651,6 +652,7 @@ function StructureLearningPath({
   item: StructureBreakdownItem;
   bilingualMode: boolean;
 }) {
+  const sourceLanguage = useReaderStore(state => state.sourceLanguage);
   const steps = [
     {
       label: bilingualMode ? '1. 抓主干 / Core Trunk' : '1. Core Trunk',
@@ -660,7 +662,7 @@ function StructureLearningPath({
     {
       label: bilingualMode ? '2. 判五大句型 / Pattern' : '2. Pattern',
       value: cleanActionSlot(item.sentence_pattern) || (bilingualMode ? '按主干判断句型 / Infer from the trunk' : 'Infer from the trunk'),
-      hint: bilingualMode ? 'SV / SVC / SVO / SVOO / SVOC' : 'SV / SVC / SVO / SVOO / SVOC',
+      hint: sentencePatternHint(sourceLanguage),
     },
     {
       label: bilingualMode ? '3. 看扩展 / Expansion' : '3. Expansion',
@@ -1010,12 +1012,14 @@ function buildFallbackLogicFlow(
 }
 
 function buildStructureBreakdown(
-  result: ParagraphExplanationOutput
+  result: ParagraphExplanationOutput,
+  sourceLanguage: SourceLanguage = 'en'
 ): StructureBreakdownItem[] {
   if (result.sentence_breakdown && result.sentence_breakdown.length > 0) {
     return result.sentence_breakdown;
   }
 
+  if (sourceLanguage === 'es') return []; // Do not invent Spanish SVO sentences from English fallback slots.
   return (result.who_did_what || []).map((item, index) => ({
     sentence_index: index + 1,
     sentence_text: [item.actor, item.action, item.target]
@@ -1254,7 +1258,8 @@ function pronunciationKey(text: string) {
   return text.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-async function playPronunciation(text: string) {
+async function playPronunciation(text: string, sourceLanguage: SourceLanguage) {
+  if (sourceLanguage === 'es') return speakInBrowser(text, sourceLanguage);
   const normalizedText = text.replace(/\s+/g, ' ').trim();
   if (!normalizedText) {
     return;
@@ -1263,7 +1268,7 @@ async function playPronunciation(text: string) {
   const response = await fetch('/api/tts/mimo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: normalizedText }),
+    body: JSON.stringify({ text: normalizedText, sourceLanguage }),
   });
 
   if (!response.ok) {
@@ -1394,6 +1399,7 @@ export default function ExplanationPanel({
     setBilingualMode,
     learningDepth,
     setLearningDepth,
+    explanationLanguage,
     sourceLanguage,
   } = useReaderStore();
   const [generating, setGenerating] = useState(false);
@@ -1486,7 +1492,8 @@ export default function ExplanationPanel({
     setPronunciationError(null);
 
     try {
-      await playPronunciation(textToSpeak);
+      try { await playPronunciation(textToSpeak, sourceLanguage); }
+      catch (error) { if (sourceLanguage === 'es') throw error; await speakInBrowser(textToSpeak, sourceLanguage); }
       setPronunciationStatus((current) => {
         const next = { ...current };
         delete next[key];
@@ -1496,7 +1503,7 @@ export default function ExplanationPanel({
       setPronunciationStatus((current) => ({ ...current, [key]: 'error' }));
       setPronunciationError((playError as Error).message);
     }
-  }, []);
+  }, [sourceLanguage]);
 
   const handleGenerate = useCallback(async (force: boolean = false) => {
     const requestId = ++requestIdRef.current;
@@ -1525,7 +1532,7 @@ export default function ExplanationPanel({
           sourceLanguage,
           previousText,
           nextText,
-          explanationLanguage: bilingualMode ? 'Chinese' : 'English',
+          explanationLanguage: bilingualMode ? 'Chinese' : explanationLanguage,
         }),
         signal: controller.signal,
       });
@@ -1669,6 +1676,7 @@ export default function ExplanationPanel({
     }
   }, [
     bilingualMode,
+    explanationLanguage,
     documentId,
     grammarMode,
     learningDepth,
@@ -1774,7 +1782,7 @@ export default function ExplanationPanel({
   }
 
   const result = data.output as ParagraphExplanationOutput;
-  const structureBreakdown = buildStructureBreakdown(result);
+  const structureBreakdown = buildStructureBreakdown(result, sourceLanguage);
   const generationLabel =
     data.status === 'STREAMING'
       ? bilingualMode

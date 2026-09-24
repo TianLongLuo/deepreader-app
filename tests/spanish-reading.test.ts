@@ -27,6 +27,10 @@ it('separates detailed explanation caches by source language', () => {
   expect(buildRequestSettingsHash('base',{paragraphId:'p',sourceLanguage:'es'})).not.toBe(buildRequestSettingsHash('base',{paragraphId:'p',sourceLanguage:'en'}));
 });
 it('never queries English dictionary provider for a Spanish word', async () => {
-  const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
-  try { await expect(lookupDictionary('niño',undefined,'es')).rejects.toMatchObject({status:422}); expect(fetchMock).not.toHaveBeenCalled(); } finally {vi.unstubAllGlobals();}
+  const fetchMock=vi.fn().mockResolvedValue(new Response('{}',{status:503}));vi.stubGlobal('fetch',fetchMock);
+  try {
+    await expect(lookupDictionary('niño',undefined,'es')).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.every(([url])=>new URL(String(url)).hostname==='en.wiktionary.org')).toBe(true);
+  } finally {vi.unstubAllGlobals();}
 });

@@ -86,11 +86,11 @@ function normalizeExplanationPayload(parsedObject: unknown): ParagraphExplanatio
   const normalized: unknown = {
     paragraph_summary: asString(
       record.paragraph_summary,
-      'This paragraph conveys an important point in the passage.'
+      ''
     ),
     plain_meaning: asString(
       record.plain_meaning,
-      'This paragraph describes the main idea in simpler language.'
+      ''
     ),
     sentence_roles: sentenceRoles,
     who_did_what: asArray(record.who_did_what, (item) => {
@@ -201,13 +201,13 @@ function normalizeExplanationPayload(parsedObject: unknown): ParagraphExplanatio
             const expression = asString(referenceRecord.expression);
             const refersTo = asString(referenceRecord.refers_to);
 
-            if (!expression && !refersTo) {
+            if (!expression || !refersTo) {
               return null;
             }
 
             return {
-              expression: expression || 'it',
-              refers_to: refersTo || 'the previous idea',
+              expression,
+              refers_to: refersTo,
               evidence: asString(referenceRecord.evidence, '') || undefined,
             };
           }
@@ -257,8 +257,7 @@ function normalizeExplanationPayload(parsedObject: unknown): ParagraphExplanatio
               ? learningFocus
               : undefined,
           explanation:
-            explanation ||
-            'This sentence adds an important step to the paragraph meaning.',
+            explanation,
         };
       }) || undefined,
     tone_or_subtext: asString(record.tone_or_subtext, '') || undefined,

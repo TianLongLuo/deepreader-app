@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { ReactReader, ReactReaderStyle } from 'react-reader';
 import { BookOpenText, BookmarkPlus, Maximize2, Menu, Minimize2 } from 'lucide-react';
+import { validSourceLanguage } from './language-tools';
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
@@ -1098,12 +1099,14 @@ export default function ReaderLayout({
 }) {
   const {
     theme,
+    setSourceLanguage,
     fontSize, lineHeight,
     explanationPanelWidth,
     explanationPanelHeight,
     setExplanationPanelSize,
   } = useReaderStore();
 
+  useEffect(()=>{const language=validSourceLanguage(new URLSearchParams(window.location.search).get('sourceLanguage'));if(language)setSourceLanguage(language);},[setSourceLanguage]);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [showDetailed, setShowDetailed] = useState(false);
   const [toolSelection, setToolSelection] = useState<ReadingSelection|null>(null);
