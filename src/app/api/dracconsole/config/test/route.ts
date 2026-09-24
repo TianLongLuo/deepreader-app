@@ -17,7 +17,11 @@ export async function POST() {
       temperature:0.3, maxTokens:256, topP:1, timeoutMs:30000, retryCount:0,
     });
     const result = await provider.testConnection();
-    return NextResponse.json(result, {status:result.success ? 200 : 400});
+    const activeForReaders = config.globalAiProvider === 'mimo' && config.shareGlobalDeepSeekWithUsers;
+    const message = result.success
+      ? `${result.message}。${activeForReaders ? 'MiMo 已设为前端共享模型。' : config.globalAiProvider !== 'mimo' ? '连接成功，但尚未启用 MiMo 为活动模型；请点击保存并启用 MiMo。' : '连接成功，但共享已关闭，普通用户不会使用此配置。'}`
+      : result.message;
+    return NextResponse.json({...result,message,activeForReaders,provider:'mimo',model:config.globalMimoModel}, {status:result.success ? 200 : 400});
   } catch {
     return NextResponse.json({error:'MiMo 测试失败，请检查已保存的密钥、接入地区和模型配置。'}, {status:400});
   }

@@ -23,6 +23,9 @@ export class MimoProvider implements AIProviderInterface {
       temperature: request.temperature ?? this.config.temperature,
       top_p: request.topP ?? this.config.topP,
       stream,
+      // Current MiMo models default to thinking, which shares the completion
+      // budget with the JSON answer. Reading requests budget for answer tokens.
+      thinking: {type:'disabled'},
       ...(wantsJson ? {response_format:{type:'json_object'}} : {}),
     };
   }
@@ -51,6 +54,7 @@ export class MimoProvider implements AIProviderInterface {
         const response = await this.fetchResponse(request,false,signal);
         if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) throw new Error('MiMo returned a non-JSON response. Please retry.');
         const data = await response.json();
+        if (data.choices?.[0]?.finish_reason === 'length') throw new Error('MiMo output was truncated. Please select a shorter passage and retry.');
         const content = data.choices?.[0]?.message?.content;
         if (typeof content !== 'string' || !content.trim()) throw new Error('MiMo returned empty content. Please retry.');
         return {content,model:data.model || this.config.model,provider:this.providerKey,latencyMs:Date.now()-started,
@@ -86,6 +90,7 @@ export class MimoProvider implements AIProviderInterface {
           let data;
           try {data=JSON.parse(raw);} catch {throw new Error('MiMo returned malformed stream data. Please retry.');}
           if (data.error) throw new Error('MiMo reported an upstream stream error. Please retry.');
+          if (data.choices?.[0]?.finish_reason === 'length') throw new Error('MiMo output was truncated. Please select a shorter passage and retry.');
           const content=data.choices?.[0]?.delta?.content;
           if (typeof content==='string' && content) yield {content};
         }
@@ -96,8 +101,10 @@ export class MimoProvider implements AIProviderInterface {
   async testConnection() {
     const started=Date.now();
     try {
-      await this.complete({systemPrompt:'You are a test assistant.',userPrompt:'Reply with OK.',maxTokens:128});
-      return {success:true,message:`Connected to ${this.config.model}`,latencyMs:Date.now()-started};
+      const response = await this.complete({systemPrompt:'Return only valid JSON with the shape {"ok":true}.',userPrompt:'Return {"ok":true}.',maxTokens:256});
+      try { if (JSON.parse(response.content).ok !== true) throw new Error('Invalid result'); }
+      catch { throw new Error('MiMo connected but did not return valid structured JSON. Check model compatibility.'); }
+      return {success:true,message:`Connected to ${this.config.model}; JSON response verified`,latencyMs:Date.now()-started};
     } catch(error) {return {success:false,message:error instanceof Error?error.message:'MiMo connection failed',latencyMs:Date.now()-started};}
   }
 }

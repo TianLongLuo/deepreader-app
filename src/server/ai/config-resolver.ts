@@ -71,7 +71,8 @@ export interface ResolvedAIConfig {
 
 /**
  * Resolves AI provider configuration from database settings.
- * Priority: user override -> workspace default -> environment fallback
+ * Shared global settings take precedence. An explicitly selected MiMo must
+ * never silently fall back to another provider when its credentials are missing.
  */
 export class AIConfigResolver {
   /**
@@ -156,8 +157,9 @@ export class AIConfigResolver {
       selectedProviderHasGlobalKey &&
       (aiAccess.isPrimaryAdmin || appConfig.shareGlobalDeepSeekWithUsers);
     const shouldForceGlobalConfig = Boolean(
-      appConfig.shareGlobalDeepSeekWithUsers &&
-        selectedProviderHasGlobalKey
+      (appConfig.shareGlobalDeepSeekWithUsers && selectedProviderHasGlobalKey) ||
+      (appConfig.globalAiProvider === 'mimo' &&
+        (appConfig.shareGlobalDeepSeekWithUsers || aiAccess.isPrimaryAdmin))
     );
     const canUseAdminFallback = Boolean(
       appConfig.shareGlobalDeepSeekWithUsers && adminWorkspaceConfig
@@ -323,6 +325,8 @@ export class AIConfigResolver {
     const settingsHashValue = hashSettings({
       providerKey,
       model,
+      baseUrl,
+      credentialFingerprint: hashSettings({apiKey}),
       temperature,
       maxTokens,
       topP,

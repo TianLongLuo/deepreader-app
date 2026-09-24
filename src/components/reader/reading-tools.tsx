@@ -19,6 +19,8 @@ export type ReadingSelection = {
   chapterText?: string;
 };
 type Answer = {
+  provider?: string;
+  model?: string;
   answer: string;
   citations?: { quote: string }[];
   questions?: { question: string; answer: string; quote: string }[];
@@ -378,6 +380,7 @@ export default function ReadingTools({
                 </p>
                 {answer && (
                   <div className="space-y-3 rounded-xl bg-white p-4">
+                    {(answer.provider || answer.model) && <p className="text-xs text-orange-700">本次模型：{answer.provider || "未知服务"} · {answer.model || "未知模型"}</p>}
                     <p className="whitespace-pre-wrap text-sm leading-7">
                       {answer.questions?.length
                         ? "先作答，再展开参考答案。"
@@ -591,6 +594,7 @@ export default function ReadingTools({
                     <p className="text-xs text-orange-700">
                       AI 生成 · {wordAnswer.word} · 结合所选原文
                     </p>
+                    {(wordAnswer.answer.provider || wordAnswer.answer.model) && <p className="mt-2 text-xs text-orange-700">本次模型：{wordAnswer.answer.provider || "未知服务"} · {wordAnswer.answer.model || "未知模型"}</p>}
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-7">
                       {wordAnswer.answer.answer}
                     </p>

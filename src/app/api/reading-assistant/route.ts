@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       config,
       req.signal,
     );
-    return NextResponse.json(answer, {
+    return NextResponse.json({...answer,provider:config.providerKey,model:config.model}, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {

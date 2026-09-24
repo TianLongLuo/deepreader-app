@@ -94,8 +94,7 @@ export default function DracConsolePanel({
   ) => {
     setError('');
 
-    startTransition(() => {
-      void (async () => {
+    startTransition(async () => {
         try {
         const response = await fetch('/api/dracconsole/config', {
           method: 'POST',
@@ -118,8 +117,7 @@ export default function DracConsolePanel({
         }));
         afterSuccess?.();
         } catch { setError(fallbackError); }
-      })();
-    });
+      });
   };
 
   const handleDeleteUser = (userId: string, email: string) => {
@@ -323,6 +321,14 @@ export default function DracConsolePanel({
             </div>
 
             <div className="space-y-3 border-t border-orange-200/70 pt-4">
+              <div role="status" className="space-y-1 rounded-2xl border border-orange-200 bg-orange-50 p-3 text-sm">
+                <p>MiMo 密钥：{snapshot.adminConfig.hasGlobalMimoApiKey ? '已保存' : '未保存'}</p>
+                <p>当前活动服务：{snapshot.adminConfig.globalAiProvider === 'mimo' ? 'MiMo' : snapshot.adminConfig.globalAiProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}</p>
+                <p>全局 AI 共享：{snapshot.adminConfig.shareGlobalDeepSeekWithUsers ? '已开启' : '已关闭'}</p>
+                {!snapshot.adminConfig.shareGlobalDeepSeekWithUsers && <p className="text-orange-800">共享关闭时，普通用户无法使用此全局 MiMo 配置。保存并启用不会自动打开共享。</p>}
+                {snapshot.adminConfig.globalAiProvider !== 'mimo' && <p className="text-orange-800">已保存或测试成功不代表前端使用 MiMo；请保存并启用 MiMo。</p>}
+                {(mimoKey.trim() || mimoModel !== snapshot.adminConfig.globalMimoModel || mimoBaseUrl !== snapshot.adminConfig.globalMimoBaseUrl) && <p>表单有未保存的更改；测试使用已保存配置。</p>}
+              </div>
               <label htmlFor="mimo-endpoint" className="text-sm font-semibold">MiMo 接入方式</label>
               <select id="mimo-endpoint" value={mimoBaseUrl} onChange={e=>setMimoBaseUrl(e.target.value)} disabled={isPending} className="h-11 w-full rounded-2xl border border-orange-200 px-3">
                 <option value="https://api.xiaomimimo.com/v1">按量付费 API</option>
@@ -337,6 +343,7 @@ export default function DracConsolePanel({
               <p className="text-xs text-orange-900/60">模型名和地区以 MiMo 控制台为准。Token Plan 使用专属密钥，与按量付费密钥不可混用。留空保留已保存密钥。</p>
               <div className="flex flex-wrap gap-2">
                 <Button disabled={isPending || !mimoModel.trim()} onClick={()=>handleConfigUpdate({globalMimoApiKey:mimoKey || undefined,globalMimoModel:mimoModel,globalMimoBaseUrl:mimoBaseUrl},'保存 MiMo 配置失败',()=>{setMimoKey('');setMimoTest('');})}>保存 MiMo 配置</Button>
+                <Button disabled={isPending || !mimoModel.trim() || (!mimoKey.trim() && !snapshot.adminConfig.hasGlobalMimoApiKey)} onClick={()=>handleConfigUpdate({globalMimoApiKey:mimoKey.trim() || undefined,globalMimoModel:mimoModel.trim(),globalMimoBaseUrl:mimoBaseUrl,globalAiProvider:'mimo'},'保存并启用 MiMo 失败',()=>{setMimoKey('');setMimoTest('MiMo 配置已保存并设为当前活动服务。请检查全局 AI 共享状态，并在阅读器发起新请求验证本次模型。');})}>保存并启用 MiMo</Button>
                 <Button variant="outline" disabled={isPending || !snapshot.adminConfig.hasGlobalMimoApiKey} onClick={()=>handleConfigUpdate({clearGlobalMimoApiKey:true},'清除 MiMo 密钥失败',()=>setMimoKey(''))}>清除密钥</Button>
                 <Button variant="outline" disabled={isTestingMimo || isPending || !snapshot.adminConfig.hasGlobalMimoApiKey} onClick={async()=>{
                   setIsTestingMimo(true);setMimoTest('');

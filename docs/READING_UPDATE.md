@@ -15,7 +15,11 @@
 
 ## MiMo 与西班牙语
 
-在 `/dracconsole` 保存 MiMo 模型名称、密钥和接入方式，再将 Active Shared Provider 切换为 MiMo。支持按量付费与 Token Plan 中国、新加坡、欧洲接口。可以先点击“测试已保存的 MiMo 配置”，测试会产生一次真实请求。密钥加密存储，界面只返回脱敏预览；未填写新密钥时保留原值。
+在 `/dracconsole` 填好 MiMo 模型名称、密钥和接入方式，点击“保存并启用 MiMo”。支持按量付费与 Token Plan 中国、新加坡、欧洲接口。普通用户使用全局配置需要打开 Shared AI；该开关保持独立，保存密钥不会自动改变共享权限。可以先点击“测试已保存的 MiMo 配置”，测试会产生一次真实请求并验证 JSON 输出；成功信息同时说明 MiMo 是否已启用、是否共享。密钥加密存储，界面只返回脱敏预览；未填写新密钥时保留原值。
+
+前端 AI 回答和语境释义会显示本次请求配置的 provider/model。已启用 MiMo 后缺少密钥会明确失败，不再静默切换到旧 DeepSeek；修改地区接口或轮换密钥也会使旧回答缓存失效。阅读请求关闭 MiMo 默认思考模式，避免思考内容耗尽为正文设定的短输出额度；完整性和截断检测仍执行。依据 [MiMo 思考模式文档](https://mimo.mi.com/docs/en-US/quick-start/usage-guide/text-generation/deep-thinking)。
+
+联调测试覆盖后台保存 → 配置解析 → MiMo HTTP 参数 → 前端七种阅读模式（英语/西语）、共享权限、密钥清除和轮换、地区变更以及流式输出。自动测试模拟上游返回，不代表线上账号的密钥、套餐余额或模型权限已验证；上线后应执行一次后台连接测试并在阅读器发起新请求。
 
 Token Plan 是接入套餐，不是单独的模型名；请填控制台允许的具体模型，例如 `mimo-v2.6-pro`。套餐使用 `tp-` / `ttp-` 密钥，按量付费使用 `sk-` 密钥，地区以控制台为准。参见 [MiMo 官方快速接入](https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/quick-access)。
 
