@@ -50,7 +50,11 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, id: deleted.id });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    const unauthenticated = error instanceof Error && error.message === 'Authentication required';
+    return NextResponse.json(
+      { error: unauthenticated ? 'Authentication required' : '删除未完成，请重试。已开始清理的书籍会保留为待删除状态。' },
+      { status: unauthenticated ? 401 : 500 },
+    );
   }
 }
 

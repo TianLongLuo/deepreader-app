@@ -17,6 +17,7 @@ import { useReaderStore } from '@/hooks/use-reader-store';
 import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
 import PdfOriginalView from './pdf-original-view';
+import { createProgressSync } from './progress-sync';
 import ReadingTools, { readingRequest, type ReadingEntry, type ReadingSelection } from './reading-tools';
 import type { ParagraphExplanationOutput } from '@/types/explanation';
 import { getActionAnnotationStyle } from './action-annotation-style';
@@ -1115,6 +1116,19 @@ export default function ReaderLayout({
   const [entries, setEntries] = useState<ReadingEntry[]>([]);
   const [readingReady, setReadingReady] = useState(false);
   const [syncError, setSyncError] = useState('');
+  // This queue survives effect resubscriptions while the keyed reader stays mounted.
+  const [progressSync] = useState(() => createProgressSync(
+    snapshot => readingRequest('/api/documents/' + document.id + '/reading', {
+      method: 'PATCH',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(snapshot),
+    }),
+    {
+      onSuccess: () => setSyncError(''),
+      onError: error => setSyncError(error instanceof Error ? error.message : 'Could not save reading progress'),
+    },
+  ));
   const pendingRestore = useRef<string|null>(null);
   const progressRef = useRef({location:'',percentage:0});
   const epubContentsRef = useRef<EpubContents[]>([]);
@@ -2360,7 +2374,6 @@ export default function ReaderLayout({
   },[readingReady,document.fileType,pdfTextState.status]);
   useEffect(()=>{
     if(!readingReady)return;
-    let lastSaved='';
     const save=()=>{
       if(pendingRestore.current)return;
       let progress=progressRef.current;
@@ -2369,13 +2382,11 @@ export default function ReaderLayout({
         const index=pdfTextState.paragraphs.findIndex(p=>getPdfSelectionKey(document.id,p.id)===target.location);
         progress={location:target.location,percentage:Math.round((index+1)/Math.max(1,pdfTextState.paragraphs.length)*100)};
       }
-      if(!progress.location||progress.location===lastSaved)return;
-      const submitted=progress.location;
-      void readingRequest('/api/documents/'+document.id+'/reading',{method:'PATCH',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(progress)}).then(()=>{lastSaved=submitted;setSyncError('');}).catch(e=>setSyncError(e.message));
+      progressSync.enqueue(progress);
     };
     const timer=window.setInterval(save,3000);window.addEventListener('pagehide',save);
     return ()=>{clearInterval(timer);window.removeEventListener('pagehide',save);save();};
-  },[readingReady,document.id,document.fileType,pdfTextState.paragraphs,getVisiblePdfBookmarkTarget]);
+  },[readingReady,document.id,document.fileType,pdfTextState.paragraphs,getVisiblePdfBookmarkTarget,progressSync]);
   useEffect(()=>{
     epubContentsRef.current.forEach(c=>c.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{node.style.boxShadow=entries.some(e=>e.kind==='note'&&node.textContent?.includes(e.text))?'inset 0 -2px #f97316':'';}));
   },[entries]);

@@ -23,24 +23,32 @@ export class DocumentService {
 
     // 1. Upload to storage
     const storage = getStorageProvider();
-    await storage.upload(storageKey, buffer, contentType);
 
-    // 2. Create DB record
-    const document = await prisma.document.create({
-      data: {
-        id: documentId,
-        workspaceId,
-        userId,
-        title,
-        fileType,
-        storageKey,
-        fileSize: buffer.length,
-        status: 'PENDING',
-        parseStatus: 'COMPLETED', // <--- We bypass backend parsing to allow instant EPUB rendering client-side!
+    try {
+      await storage.upload(storageKey, buffer, contentType);
+
+      // 2. Create DB record
+      return await prisma.document.create({
+        data: {
+          id: documentId,
+          workspaceId,
+          userId,
+          title,
+          fileType,
+          storageKey,
+          fileSize: buffer.length,
+          status: 'PENDING',
+          parseStatus: 'COMPLETED', // <--- We bypass backend parsing to allow instant EPUB rendering client-side!
+        }
+      });
+    } catch (error) {
+      try {
+        await storage.delete(storageKey);
+      } catch (cleanupError) {
+        log.error({ storageKey, cleanupError }, 'Failed to clean up unregistered upload');
       }
-    });
-
-    return document;
+      throw error;
+    }
   }
 
   /**
@@ -71,7 +79,7 @@ export class DocumentService {
    */
   async getDocument(documentId: string, workspaceId: string) {
     return prisma.document.findFirst({
-      where: { id: documentId, workspaceId }
+      where: { id: documentId, workspaceId, status: { notIn: ['DELETED', 'DELETING'] } }
     });
   }
 
@@ -96,7 +104,7 @@ export class DocumentService {
    */
   async getParagraphs(sectionId: string, workspaceId: string) {
     return prisma.paragraph.findMany({
-      where: { sectionId, document: { workspaceId, status: { not: 'DELETED' } } },
+      where: { sectionId, document: { workspaceId, status: { notIn: ['DELETED', 'DELETING'] } } },
       orderBy: { orderIndex: 'asc' },
       include: {
         sentences: { orderBy: { orderIndex: 'asc' } }
@@ -116,11 +124,18 @@ export class DocumentService {
       return null;
     }
 
+    // Persist the intent before touching storage. Failed cleanup remains visible
+    // in the library for retry, but cannot be opened as a readable document.
+    await prisma.document.update({
+      where: { id: document.id, workspaceId },
+      data: { status: 'DELETING' },
+    });
+
     const storage = getStorageProvider();
     await storage.delete(document.storageKey);
 
     await prisma.document.delete({
-      where: { id: document.id },
+      where: { id: document.id, workspaceId },
     });
 
     log.info({ workspaceId, documentId }, 'Document deleted');

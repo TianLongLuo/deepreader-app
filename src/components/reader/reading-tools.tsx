@@ -120,6 +120,7 @@ export default function ReadingTools({
   const lastAction = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
     controller.current?.abort();
+    lastAction.current = null;
     setBusy(false);
     setAnswer(null);
     setHistory([]);

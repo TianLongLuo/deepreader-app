@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const parsed = textExplanationInput.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: 'Invalid explanation input (text max 20,000 characters).' }, { status: 400 });
     const { documentId, text, stream, ...options } = parsed.data;
-    const document = await prisma.document.findFirst({ where: { id: documentId, workspaceId: user.workspaceId, status: { not: 'DELETED' } }, select: { id: true } });
+    const document = await prisma.document.findFirst({ where: { id: documentId, workspaceId: user.workspaceId, status: { notIn: ['DELETED', 'DELETING'] } }, select: { id: true } });
     if (!document) return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     const textHash = hashText(text);
     // Coalesce concurrent first-time paragraph creation without touching other documents.

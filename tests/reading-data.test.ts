@@ -243,3 +243,15 @@ it("deduplicates concurrent saves and cascades entries and progress on document 
     await prisma.readingProgress.count({ where: { documentId: "cascade" } }),
   ).toBe(0);
 });
+
+it("rejects reading and progress writes while document cleanup is pending", async () => {
+  await prisma.document.update({ where: { id: "doc" }, data: { status: "DELETING" } });
+  try {
+    await expect(readingService.get("alice", "owner", "doc")).rejects.toMatchObject({ status: 404 });
+    await expect(readingService.progress("alice", "owner", "doc", { location: "chapter1", percentage: 25 })).rejects.toMatchObject({ status: 404 });
+    await expect(readingService.create("alice", "owner", "doc", { kind: "note", text: "Too late" })).rejects.toMatchObject({ status: 404 });
+    expect(await readingService.study("alice", "owner")).not.toEqual(expect.arrayContaining([expect.objectContaining({ documentId: "doc" })]));
+  } finally {
+    await prisma.document.update({ where: { id: "doc" }, data: { status: "PENDING" } });
+  }
+});

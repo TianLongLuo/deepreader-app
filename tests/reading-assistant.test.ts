@@ -220,7 +220,7 @@ it("checks authentication and ownership before resolving AI or generating", asyn
   mocks.findFirst.mockResolvedValue(null);
   expect((await POST(request())).status).toBe(404);
   expect(mocks.findFirst).toHaveBeenCalledWith({
-    where: { id: "doc", workspaceId: "w", status: { not: "DELETED" } },
+    where: { id: "doc", workspaceId: "w", status: { notIn: ["DELETED", "DELETING"] } },
     select: { id: true },
   });
   expect(mocks.resolve).not.toHaveBeenCalled();

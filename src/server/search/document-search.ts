@@ -19,8 +19,10 @@ const cache = new Map<string, { until: number; entries: TextEntry[] }>();
 const MAX_INDEX_CHARACTERS = 5_000_000;
 
 export function matchEntries(entries: TextEntry[], query: string) {
-  const needle = query.normalize("NFC").toLocaleLowerCase();
-  const matches = entries.map(entry => ({...entry, text:entry.text.normalize("NFC")})).filter((entry) =>
+  const normalize = (text: string) => text.normalize("NFC").replace(/\s+/g, " ").trim();
+  const needle = normalize(query).toLocaleLowerCase();
+  if (!needle) return { results: [], truncated: false };
+  const matches = entries.map(entry => ({...entry, text:normalize(entry.text)})).filter((entry) =>
     entry.text.toLocaleLowerCase().includes(needle),
   );
   return {

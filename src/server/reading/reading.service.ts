@@ -32,7 +32,7 @@ export class ReadingError extends Error {
 }
 const documentScope = (workspaceId: string) => ({
   workspaceId,
-  status: { not: "DELETED" },
+  status: { notIn: ["DELETED", "DELETING"] },
 });
 const entryScope = (userId: string, workspaceId: string) => ({
   userId,

@@ -750,7 +750,7 @@ export class AIExplanationService {
 
     // Fetch the paragraph with context
     const paragraph = await prisma.paragraph.findUnique({
-      where: { id: paragraphId, document: { workspaceId, status: { not: 'DELETED' } } },
+      where: { id: paragraphId, document: { workspaceId, status: { notIn: ['DELETED', 'DELETING'] } } },
       include: {
         document: true,
         sentences: { orderBy: { orderIndex: 'asc' } },
@@ -846,7 +846,7 @@ export class AIExplanationService {
     const { paragraphId, forceRegenerate = false } = request;
 
     const paragraph = await prisma.paragraph.findUnique({
-      where: { id: paragraphId, document: { workspaceId, status: { not: 'DELETED' } } },
+      where: { id: paragraphId, document: { workspaceId, status: { notIn: ['DELETED', 'DELETING'] } } },
       include: {
         document: true,
         sentences: { orderBy: { orderIndex: 'asc' } },
@@ -1206,7 +1206,7 @@ No markdown. No extra text.
     const explanation = await prisma.paragraphExplanation.findFirst({
       where: {
         paragraphId,
-        paragraph: { document: { workspaceId, status: { not: 'DELETED' } } },
+        paragraph: { document: { workspaceId, status: { notIn: ['DELETED', 'DELETING'] } } },
         ...(settingsHash ? { settingsHash } : {}),
         status: 'COMPLETED',
       },

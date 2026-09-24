@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       where: {
         id: parsed.data.documentId,
         workspaceId: user.workspaceId,
-        status: { not: "DELETED" },
+        status: { notIn: ["DELETED", "DELETING"] },
       },
       select: { id: true },
     });

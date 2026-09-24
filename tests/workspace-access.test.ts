@@ -58,3 +58,19 @@ it('rejects foreign generation before accessing any AI configuration', async () 
   await expect(aiExplanationService.streamExplain('other', { paragraphId: 'paragraph' })[Symbol.asyncIterator]().next()).rejects.toThrow('Paragraph not found');
   expect(aiConfigResolver.resolve).not.toHaveBeenCalled();
 });
+
+it('keeps partially deleted documents retryable in the library but blocks reading and AI', async () => {
+  await prisma.document.update({ where: { id: 'doc' }, data: { status: 'DELETING' } });
+  try {
+    expect(await documentService.listDocuments('owner', 'user')).toEqual([
+      expect.objectContaining({ id: 'doc', status: 'DELETING' }),
+    ]);
+    expect(await documentService.getDocument('doc', 'owner')).toBeNull();
+    expect(await documentService.getParagraphs('section', 'owner')).toEqual([]);
+    expect(await aiExplanationService.getExplanation('paragraph', 'owner')).toBeNull();
+    await expect(aiExplanationService.explain('owner', { paragraphId: 'paragraph' })).rejects.toThrow('Paragraph not found');
+    expect(aiConfigResolver.resolve).not.toHaveBeenCalled();
+  } finally {
+    await prisma.document.update({ where: { id: 'doc' }, data: { status: 'PENDING' } });
+  }
+});

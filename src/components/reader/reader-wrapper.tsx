@@ -25,6 +25,7 @@ export default function ReaderWrapper({
 }) {
   return (
     <ReaderLayoutNoSSR
+      key={JSON.stringify([currentUser.id, document.id])}
       document={document}
       initialSections={initialSections}
       currentUser={currentUser}

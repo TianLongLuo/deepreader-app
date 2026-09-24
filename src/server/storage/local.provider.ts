@@ -48,11 +48,14 @@ export class LocalStorageProvider implements StorageProvider {
 
   async delete(key: string): Promise<void> {
     const filePath = this.resolvePath(key);
-    try {
-      await fs.unlink(filePath);
-      await fs.unlink(filePath + '.meta.json').catch(() => {});
-    } catch (error) {
-      log.warn({ key, error }, 'Failed to delete file');
+    for (const target of [filePath, filePath + '.meta.json']) {
+      try {
+        await fs.unlink(target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        log.warn({ key, error }, 'Failed to delete file');
+        throw error;
+      }
     }
   }
 

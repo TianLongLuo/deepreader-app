@@ -22,6 +22,7 @@ export default function DocumentList({
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent');
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<string[]>([]);
   const visible = [...documents].filter(d => d.title.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : sort === 'upload' ? +new Date(b.createdAt) - +new Date(a.createdAt) : +new Date(b.readingProgress?.[0]?.updatedAt ?? b.createdAt) - +new Date(a.readingProgress?.[0]?.updatedAt ?? a.createdAt));
   const handleRename = async (doc: DocumentListItem) => {
     const title = window.prompt('Book title', doc.title)?.trim();
@@ -36,26 +37,38 @@ export default function DocumentList({
   };
 
   const handleDelete = async (documentId: string) => {
+    if (deleting.includes(documentId)) return;
     const confirmed = window.confirm(
-      'Delete this book and all paragraph explanations bound to it?'
+      '删除这本书及其阅读进度、笔记、生词和 AI 记录？此操作不可撤销。'
     );
     if (!confirmed) {
       return;
     }
 
-    const response = await fetch(`/api/documents/${documentId}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
-      window.alert(payload?.error || 'Failed to delete document.');
-      return;
+    setError('');
+    setDeleting(current => [...current, documentId]);
+    try {
+      const response = await fetch(`/api/documents/${documentId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || '删除未完成，请重试。');
+      }
+      setDocuments(current => current.filter(doc => doc.id !== documentId));
+    } catch (failure) {
+      // A failed response may have occurred after deletion started (or even
+      // finished). Refresh its durable status before offering the next action.
+      try {
+        const response = await fetch('/api/documents');
+        if (response.ok) {
+          const refreshed: DocumentListItem[] = await response.json();
+          setDocuments(refreshed);
+          if (!refreshed.some(doc => doc.id === documentId)) return;
+        }
+      } catch { /* Keep the existing row so the user can retry after reconnecting. */ }
+      setError(failure instanceof Error ? failure.message : '删除未完成，请重试。');
+    } finally {
+      setDeleting(current => current.filter(id => id !== documentId));
     }
-
-    setDocuments((current) => current.filter((doc) => doc.id !== documentId));
   };
 
   if (documents.length === 0) {
@@ -79,7 +92,7 @@ export default function DocumentList({
       {!visible.length && <p>No books match your search.</p>}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
       {visible.map((doc) => (
-        <DocumentCard key={doc.id} doc={doc} onDelete={handleDelete} onRename={handleRename} />
+        <DocumentCard key={doc.id} doc={doc} deleting={deleting.includes(doc.id)} onDelete={handleDelete} onRename={handleRename} />
       ))}
       </div>
     </div>
@@ -90,33 +103,41 @@ function DocumentCard({
   doc,
   onDelete,
   onRename,
+  deleting,
 }: {
   doc: DocumentListItem;
   onDelete: (documentId: string) => Promise<void>;
   onRename: (doc: DocumentListItem) => Promise<void>;
+  deleting: boolean;
 }) {
-  const isReady = doc.parseStatus === 'COMPLETED';
+  const deletionPending = doc.status === 'DELETING';
+  const isReady = doc.parseStatus === 'COMPLETED' && !deletionPending && !deleting;
   const isProcessing = doc.parseStatus === 'PROCESSING' || doc.parseStatus === 'PENDING';
 
   return (
     <Card className="group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-200/60">
       <button
         type="button"
+        disabled={deleting}
         className="absolute right-3 top-3 z-20 rounded-full border border-orange-200 bg-white/80 p-2 text-orange-700 shadow-sm backdrop-blur-md transition-colors hover:text-red-600"
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
           void onDelete(doc.id);
         }}
-        aria-label={`Delete ${doc.title}`}
+        aria-label={`${deletionPending ? '重试删除' : 'Delete'} ${doc.title}`}
       >
         <Trash2 className="h-4 w-4" />
       </button>
 
-      <button onClick={() => void onRename(doc)} className="absolute left-3 top-3 z-20 rounded-full bg-white/90 px-3 py-2 text-sm text-orange-800">Rename</button>
+      <button disabled={deletionPending || deleting} onClick={() => void onRename(doc)} className="absolute left-3 top-3 z-20 rounded-full bg-white/90 px-3 py-2 text-sm text-orange-800 disabled:opacity-40">Rename</button>
       {!isReady && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-orange-50/70 backdrop-blur-[2px]">
-            {isProcessing ? (
+            {deletionPending || deleting ? (
+                <p role="status" className="rounded-xl border border-orange-200 bg-white px-4 py-3 text-center text-sm text-orange-900">
+                  {deleting ? '正在删除…' : '删除未完成，请点击右上角重试删除。'}
+                </p>
+            ) : isProcessing ? (
                 <div className="flex flex-col items-center text-orange-600">
                     <RefreshCw className="w-8 h-8 animate-spin mb-2" />
                     <span className="rounded-full border border-orange-200 bg-white px-3 py-1 text-sm font-medium shadow-sm">Parsing content...</span>
@@ -130,7 +151,7 @@ function DocumentCard({
         </div>
       )}
       
-      <Link href={isReady ? `/reader/${doc.id}${doc.readingProgress?.[0]?.location ? `?location=${encodeURIComponent(doc.readingProgress[0].location)}` : ''}` : '#'} className={!isReady ? 'pointer-events-none opacity-50' : ''}>
+      <Link aria-disabled={!isReady} tabIndex={isReady ? undefined : -1} href={isReady ? `/reader/${doc.id}${doc.readingProgress?.[0]?.location ? `?location=${encodeURIComponent(doc.readingProgress[0].location)}` : ''}` : '#'} className={!isReady ? 'pointer-events-none opacity-50' : ''}>
         <div className="flex h-36 items-center justify-center border-b border-orange-200 bg-gradient-to-br from-orange-100 via-amber-50 to-white transition-colors group-hover:from-orange-200/80">
           <div className="rounded-full bg-white/70 p-4 text-4xl shadow-inner shadow-orange-100">📖</div>
         </div>
