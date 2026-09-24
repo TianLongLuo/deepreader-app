@@ -1,6 +1,8 @@
 import { createChildLogger } from '@/lib/logger';
 import { ParsedDocument, ParsedSection, ParsedParagraph } from '@/types/documents';
 import { segmentParagraphs } from './segmentation';
+import { reflowPdfPage } from './pdf-reflow';
+import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 
 const log = createChildLogger('pdf-parser');
 
@@ -112,6 +114,7 @@ export class PdfParser {
     const { PDFParse } = require('pdf-parse');
     const parser = new PDFParse({ data: buffer });
     log.info({ title, size: buffer.length }, 'Starting PDF parse');
+    let layoutDocument: PDFDocumentProxy | undefined;
 
     try {
       // PDFParse caches its document only after loading finishes. Calling
@@ -122,6 +125,18 @@ export class PdfParser {
         cellSeparator: ' ',
       });
       const infoResult = await parser.getInfo().catch(() => null);
+      // Keep the original extraction block boundaries so existing paragraph
+      // bookmarks remain valid. A separate public pdf.js pass supplies geometry
+      // only for reflow within a block, after releasing the first worker.
+      await parser.destroy();
+      try {
+        const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const loading = getDocument({ data: new Uint8Array(buffer), verbosity: 0 });
+        try { layoutDocument = await loading.promise; }
+        catch (error) { await loading.destroy(); throw error; }
+      } catch (error) {
+        log.warn({ error }, 'PDF layout unavailable; retaining extracted text');
+      }
 
       const info = infoResult?.info ?? {};
       const metadata = {
@@ -145,7 +160,18 @@ export class PdfParser {
         const pageText = page.text.trim();
         if (!pageText) continue;
 
-        const paragraphs = splitPdfPageIntoBlocks(pageText);
+        const paragraphs = splitPdfPageIntoBlocks(pageText).map(block => block.replace(/\s*\n\s*/g, ' '));
+        if (layoutDocument && paragraphs.length === 1) {
+          const physicalPage = await layoutDocument.getPage(page.num);
+          try {
+            const content = await physicalPage.getTextContent();
+            const runs = content.items.filter((item): item is import('pdfjs-dist/types/src/display/api').TextItem => 'str' in item);
+            const reflowed = reflowPdfPage(runs);
+            if (reflowed) paragraphs[0] = reflowed;
+          } catch (error) {
+            log.warn({ error, page: page.num }, 'PDF page layout unavailable');
+          } finally { physicalPage.cleanup(); }
+        }
 
         for (const rawText of paragraphs) {
           if (normalizeForAnalysis(rawText).length > 0) {
@@ -174,6 +200,7 @@ export class PdfParser {
       throw new Error(`Failed to parse PDF: ${(error as Error).message}`);
     } finally {
       await parser.destroy().catch(() => {});
+      await layoutDocument?.destroy().catch(() => {});
     }
   }
 }

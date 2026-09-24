@@ -11,12 +11,14 @@ import {
   useState,
 } from 'react';
 import { ReactReader, ReactReaderStyle } from 'react-reader';
-import { BookOpenText, BookmarkPlus, Maximize2, Menu, Minimize2 } from 'lucide-react';
+import { BookOpenText, BookmarkPlus } from 'lucide-react';
 import { validSourceLanguage } from './language-tools';
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
 import PdfOriginalView from './pdf-original-view';
+import ReaderToolbar from './reader-toolbar';
+import { formatPdfPageLocation, parsePdfPageLocation, pdfPageProgress } from './pdf-location';
 import { createProgressSync } from './progress-sync';
 import ReadingTools, { readingRequest, type ReadingEntry, type ReadingSelection } from './reading-tools';
 import type { ParagraphExplanationOutput } from '@/types/explanation';
@@ -252,18 +254,6 @@ const themeClasses: Record<ReaderTheme, string> = {
   light: 'bg-[#fff7ed] text-orange-950',
   dark: 'bg-[#1c120d] text-orange-50',
   sepia: 'bg-[#fff3df] text-orange-950',
-};
-
-const pdfReaderLinkClasses: Record<ReaderTheme, string> = {
-  light: 'border-orange-200 bg-white/80 text-orange-900 hover:bg-orange-100',
-  dark: 'border-orange-300/15 bg-[#1c120d]/85 text-orange-50 hover:bg-orange-300/10',
-  sepia: 'border-orange-200 bg-orange-50/80 text-[#433422] hover:bg-orange-100',
-};
-
-const pdfReaderPageClasses: Record<ReaderTheme, string> = {
-  light: 'border-orange-200 bg-white/75 shadow-[0_18px_55px_rgba(251,146,60,0.20)]',
-  dark: 'border-orange-300/15 bg-orange-50/[0.045] shadow-[0_18px_55px_rgba(0,0,0,0.24)]',
-  sepia: 'border-orange-200 bg-white/45 shadow-[0_18px_55px_rgba(251,146,60,0.16)]',
 };
 
 const pdfReaderPageMetaClasses: Record<ReaderTheme, string> = {
@@ -1137,6 +1127,7 @@ export default function ReaderLayout({
   const typographyRef = useRef({fontSize,lineHeight});
   useEffect(()=>{typographyRef.current = {fontSize,lineHeight};},[fontSize,lineHeight]);
   const [location, setLocation] = useState<string | number>(0);
+  const [epubPercentage, setEpubPercentage] = useState(0);
   const [selectedParagraph, setSelectedParagraph] = useState<{
     key: string;
     text: string;
@@ -1164,7 +1155,21 @@ export default function ReaderLayout({
   const [immersive, setImmersive] = useState(false);
   const [pdfPageJumpValue, setPdfPageJumpValue] = useState('');
   const [pdfViewMode, setPdfViewMode] = useState<'text' | 'original'>('text');
-  const [pdfOriginalPage, setPdfOriginalPage] = useState(1);
+  const [pdfOriginalPage, setPdfOriginalPageState] = useState(1);
+  const pdfOriginalPageRef = useRef(1);
+  const pdfReadyPageRef = useRef<number | null>(null);
+  const [pdfReadyPage, setPdfReadyPage] = useState<number | null>(null);
+  const [pdfVisiblePage, setPdfVisiblePage] = useState(1);
+  const setPdfOriginalPage = useCallback((page: number) => {
+    if (page !== pdfOriginalPageRef.current) {
+      pdfReadyPageRef.current = null;
+      setPdfReadyPage(null);
+    }
+    pdfOriginalPageRef.current = page;
+    setPdfOriginalPageState(page);
+    setToolSelection(null);
+    setToolsOpen(false);
+  }, []);
   const [pdfJumpError, setPdfJumpError] = useState('');
   const pdfViewModeRef = useRef<'text' | 'original'>('text');
   const changePdfViewMode = useCallback((mode: 'text' | 'original') => {
@@ -1172,6 +1177,8 @@ export default function ReaderLayout({
     setPdfViewMode(mode);
     setToolsOpen(false);
     setShowDetailed(false);
+    setToolSelection(null);
+    setSelectedParagraph(null);
     setPdfJumpError('');
   }, []);
   const userBookmarks: UserBookmark[] = entries.filter(e=>e.kind==='bookmark'&&e.location).map(e=>({id:e.id,label:e.text,location:e.location!,createdAt:e.createdAt}));
@@ -1396,9 +1403,13 @@ export default function ReaderLayout({
   );
 
   const getVisiblePdfBookmarkTarget = useCallback(() => {
-    if (pdfViewModeRef.current === 'original') return null;
     if (document.fileType !== 'PDF') {
       return null;
+    }
+    if (pdfViewModeRef.current === 'original') {
+      const page = pdfOriginalPageRef.current;
+      if (pdfReadyPageRef.current !== page) return null;
+      return { location: formatPdfPageLocation(document.id, page), label: `第 ${page} 页`, pageNumber: page };
     }
 
     const container = containerRef.current;
@@ -1406,7 +1417,7 @@ export default function ReaderLayout({
       return null;
     }
 
-    const containerRect = container.getBoundingClientRect();
+    const readingTop = (container.querySelector('[data-pdf-text-scroll]') ?? container).getBoundingClientRect().top;
     const paragraphButtons = Array.from(
       container.querySelectorAll<HTMLButtonElement>('[data-pdf-selection-key]')
     );
@@ -1415,7 +1426,7 @@ export default function ReaderLayout({
       distance: number;
     } | null>((best, element) => {
       const rect = element.getBoundingClientRect();
-      const distance = Math.abs(rect.top - containerRect.top - 96);
+      const distance = Math.abs(rect.top - readingTop - 24);
 
       if (!best || distance < best.distance) {
         return { element, distance };
@@ -1442,8 +1453,9 @@ export default function ReaderLayout({
     return {
       location: bestMatch.element.dataset.pdfSelectionKey,
       label: paragraph.text.slice(0, 48),
+      pageNumber: paragraph.pageNumber,
     };
-  }, [document.fileType, document.id, pdfTextState.paragraphs, selectedParagraph]);
+  }, [document.fileType, document.id, pdfTextState.paragraphs]);
 
   const installInteractiveParagraphs = useCallback((contents: EpubContents) => {
     contents.addStylesheetCss(
@@ -1776,13 +1788,7 @@ export default function ReaderLayout({
     }
 
     const controller = new AbortController();
-    setSelectedParagraph(null);
-    setPdfExplanations({});
-    setPdfTextState({
-      status: 'loading',
-      paragraphs: [],
-      pageCount: null,
-    });
+    // ReaderWrapper keys the reader by book/user; its initial state is loading.
 
     fetch(`/api/documents/${document.id}/text`, {
       signal: controller.signal,
@@ -1801,11 +1807,13 @@ export default function ReaderLayout({
         };
       })
       .then((payload) => {
+        if (controller.signal.aborted) return;
         setPdfTextState({
           status: 'ready',
           paragraphs: payload.paragraphs ?? [],
           pageCount: payload.pageCount ?? null,
         });
+        if (!payload.paragraphs?.length) changePdfViewMode('original');
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -1826,7 +1834,7 @@ export default function ReaderLayout({
     return () => {
       controller.abort();
     };
-  }, [document.fileType, document.id]);
+  }, [document.fileType, document.id, changePdfViewMode]);
 
   useEffect(() => {
     if (!selectedParagraph) {
@@ -2141,9 +2149,22 @@ export default function ReaderLayout({
     renditionRef.current = rendition;
     registerThemes(rendition);
     if (!hooksRegisteredRef.current) {
-      void rendition.book?.ready?.then(()=>rendition.book?.locations?.generate(1600)).catch(()=>{});
+      void rendition.book?.ready?.then(async () => {
+        await rendition.book?.locations?.generate(1600);
+        if (renditionRef.current !== rendition || !progressRef.current.location) return;
+        const ratio = rendition.book?.locations?.percentageFromCfi(progressRef.current.location);
+        if (typeof ratio === 'number' && Number.isFinite(ratio) && ratio >= 0) {
+          const percentage = Math.min(100, ratio * 100);
+          progressRef.current = { ...progressRef.current, percentage };
+          setEpubPercentage(percentage);
+        }
+      }).catch(()=>{});
       rendition.on?.('relocated', (value) => {
-        if (value.start?.cfi) progressRef.current = {location:value.start.cfi, percentage:Math.max(0,Math.min(100,(rendition.book?.locations?.percentageFromCfi(value.start.cfi)||value.start.percentage||0)*100))};
+        if (value.start?.cfi) {
+          const percentage = Math.max(0,Math.min(100,(rendition.book?.locations?.percentageFromCfi(value.start.cfi)||value.start.percentage||0)*100));
+          progressRef.current = {location:value.start.cfi, percentage};
+          setEpubPercentage(percentage);
+        }
       });
     }
 
@@ -2200,13 +2221,11 @@ export default function ReaderLayout({
       return;
     }
 
-    const label = window.prompt('Bookmark name', suggestedLabel)?.trim();
-
-    if (!label) {
-      return;
-    }
-
-    void saveReadingEntry('bookmark', label, '', bookmarkLocation).catch((error) => setSyncError(error.message));
+    // Use the current page/chapter as the label for the same one-click action
+    // in EPUB and both PDF layouts, including embedded browsers without prompts.
+    void saveReadingEntry('bookmark', suggestedLabel, '', bookmarkLocation)
+      .then(() => setDrawerOpen(true))
+      .catch((error) => setSyncError(error.message));
   }, [
     document.fileType,
     getVisiblePdfBookmarkTarget,
@@ -2237,7 +2256,14 @@ export default function ReaderLayout({
   }, [closeExplanationPanel]);
 
   const jumpToPdfBookmark = useCallback(
-    (target: string) => {
+    (target: string, openTools = true) => {
+      const page = parsePdfPageLocation(target, document.id);
+      if (page !== null) {
+        setPdfOriginalPage(page);
+        changePdfViewMode('original');
+        setDrawerOpen(false);
+        return;
+      }
       const paragraphId = getPdfParagraphIdFromSelectionKey(target);
       const paragraph = pdfTextState.paragraphs.find(
         (item) => item.id === paragraphId
@@ -2268,18 +2294,19 @@ export default function ReaderLayout({
       });
 
       window.requestAnimationFrame(() => {
-        openPdfParagraph(paragraph, paragraphElement);
+        if (openTools) openPdfParagraph(paragraph, paragraphElement);
       });
       });
     },
-    [openPdfParagraph, pdfTextState.paragraphs, changePdfViewMode]
+    [openPdfParagraph, pdfTextState.paragraphs, changePdfViewMode, document.id, setPdfOriginalPage]
   );
 
   const jumpToPdfPage = useCallback(
     (pageNumber: number) => {
+      const total = pdfTextState.pageCount ?? document.pageCount;
       if (
-        !Number.isInteger(pageNumber) || pageNumber < 1 ||
-        (pdfTextState.pageCount && pageNumber > pdfTextState.pageCount)
+        !Number.isSafeInteger(pageNumber) || pageNumber < 1 ||
+        (total && pageNumber > total)
       ) return false;
       if (pdfViewMode === 'original') {
         setPdfOriginalPage(pageNumber);
@@ -2294,7 +2321,7 @@ export default function ReaderLayout({
         setPdfOriginalPage(pageNumber);
         changePdfViewMode('original');
         setDrawerOpen(false);
-        setPdfJumpError('此页没有可学习文字，已切换到 PDF 原版。');
+        setPdfJumpError('本页没有可提取文字，已显示书页排版。阅读位置和书签仍会保存。');
         return true;
       }
 
@@ -2314,7 +2341,7 @@ export default function ReaderLayout({
       setDrawerOpen(false);
       return true;
     },
-    [pdfPageGroups, pdfTextState.pageCount, pdfViewMode, changePdfViewMode]
+    [pdfPageGroups, pdfTextState.pageCount, pdfViewMode, changePdfViewMode, document.pageCount, setPdfOriginalPage]
   );
 
   const handlePdfPageJump = useCallback(() => {
@@ -2344,7 +2371,7 @@ export default function ReaderLayout({
     [document.fileType, jumpToLocation, jumpToPdfBookmark]
   );
 
-  const jumpReading = useCallback((target:string)=>{if(document.fileType==='PDF')jumpToPdfBookmark(target);else jumpToLocation(target);},[document.fileType,jumpToPdfBookmark,jumpToLocation]);
+  const jumpReading = useCallback((target:string, openTools = true)=>{if(document.fileType==='PDF')jumpToPdfBookmark(target, openTools);else jumpToLocation(target);},[document.fileType,jumpToPdfBookmark,jumpToLocation]);
   const jumpReadingRef = useRef(jumpReading); useEffect(()=>{jumpReadingRef.current=jumpReading;},[jumpReading]);
   useEffect(()=>{
     let disposed=false;
@@ -2368,10 +2395,10 @@ export default function ReaderLayout({
   },[document.id,currentUser.id]);
   useEffect(()=>{
     if(!readingReady)return;
-    if(pendingRestore.current && (document.fileType==='EPUB'||pdfTextState.status==='ready')) {
-      const target=pendingRestore.current;pendingRestore.current=null;jumpReadingRef.current(target);
+    if(pendingRestore.current && (document.fileType==='EPUB'||pdfTextState.status==='ready'||parsePdfPageLocation(pendingRestore.current, document.id)!==null)) {
+      const target=pendingRestore.current;pendingRestore.current=null;jumpReadingRef.current(target, false);
     }
-  },[readingReady,document.fileType,pdfTextState.status]);
+  },[readingReady,document.fileType,document.id,pdfTextState.status]);
   useEffect(()=>{
     if(!readingReady)return;
     const save=()=>{
@@ -2379,14 +2406,15 @@ export default function ReaderLayout({
       let progress=progressRef.current;
       if(document.fileType==='PDF') {
         const target=getVisiblePdfBookmarkTarget();if(!target)return;
-        const index=pdfTextState.paragraphs.findIndex(p=>getPdfSelectionKey(document.id,p.id)===target.location);
-        progress={location:target.location,percentage:Math.round((index+1)/Math.max(1,pdfTextState.paragraphs.length)*100)};
+        progress={location:target.location,percentage:pdfPageProgress(target.pageNumber ?? 1,pdfTextState.pageCount ?? document.pageCount ?? null)};
       }
       progressSync.enqueue(progress);
     };
+    const onVisibilityChange = () => { if (globalThis.document.visibilityState === 'hidden') save(); };
     const timer=window.setInterval(save,3000);window.addEventListener('pagehide',save);
-    return ()=>{clearInterval(timer);window.removeEventListener('pagehide',save);save();};
-  },[readingReady,document.id,document.fileType,pdfTextState.paragraphs,getVisiblePdfBookmarkTarget,progressSync]);
+    globalThis.document.addEventListener('visibilitychange', onVisibilityChange);
+    return ()=>{clearInterval(timer);window.removeEventListener('pagehide',save);globalThis.document.removeEventListener('visibilitychange', onVisibilityChange);save();};
+  },[readingReady,document.id,document.fileType,document.pageCount,pdfTextState.pageCount,getVisiblePdfBookmarkTarget,progressSync]);
   useEffect(()=>{
     epubContentsRef.current.forEach(c=>c.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{node.style.boxShadow=entries.some(e=>e.kind==='note'&&node.textContent?.includes(e.text))?'inset 0 -2px #f97316':'';}));
   },[entries]);
@@ -2418,57 +2446,76 @@ export default function ReaderLayout({
     setLocation(nextLocation);
   }, [navigationTarget]);
 
+  const pdfTotal = pdfTextState.pageCount ?? document.pageCount ?? null;
+  const currentPdfPage = pdfViewMode === 'original' ? pdfOriginalPage : pdfVisiblePage;
+  const switchPdfLayout = (mode: 'text' | 'original', learn = false) => {
+    const page = getVisiblePdfBookmarkTarget()?.pageNumber ?? currentPdfPage;
+    if (mode === 'original') {
+      setPdfOriginalPage(page);
+      changePdfViewMode('original');
+      return;
+    }
+    const paragraph = pdfTextState.paragraphs.find(item => item.pageNumber === page);
+    if (!paragraph) {
+      setPdfJumpError(pdfTextState.status === 'loading' ? '正在提取文字，请稍后再试。' : '本页没有可提取文字，查词和 AI 分析需要先做 OCR。');
+      return;
+    }
+    changePdfViewMode('text');
+    setPdfVisiblePage(page);
+    window.requestAnimationFrame(() => {
+      if (learn) jumpToPdfBookmark(getPdfSelectionKey(document.id, paragraph.id));
+      else containerRef.current?.querySelector('[data-pdf-page-number="' + page + '"]')?.scrollIntoView({block:'start'});
+    });
+  };
+  const turnPage = (delta: number) => {
+    setToolsOpen(false);
+    if (document.fileType === 'EPUB') {
+      if (delta < 0) renditionRef.current?.prev();
+      else renditionRef.current?.next();
+    } else {
+      const page = getVisiblePdfBookmarkTarget()?.pageNumber ?? currentPdfPage;
+      setPdfJumpError('');
+      if (jumpToPdfPage(page + delta)) setPdfVisiblePage(page + delta);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
       className={`${immersive
-        ? 'fixed inset-0 z-[60] flex w-full overflow-hidden'
-        : 'relative flex h-screen w-full overflow-hidden'} ${theme === 'dark'
+        ? 'fixed inset-0 z-[60] flex flex-col w-full overflow-hidden'
+        : 'relative flex flex-col h-screen w-full overflow-hidden'} ${theme === 'dark'
         ? 'bg-[radial-gradient(circle_at_12%_10%,rgba(251,191,36,0.12),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(251,146,60,0.10),transparent_28%),#1c120d]'
         : 'bg-[radial-gradient(circle_at_12%_10%,rgba(251,191,36,0.28),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(251,146,60,0.22),transparent_28%),linear-gradient(135deg,#fff7ed_0%,#fffbeb_55%,#fff1e6_100%)]'} ${themeClasses[theme]}`}
     >
       {document.fileType === 'EPUB' || document.fileType === 'PDF' ? (
         <>
-          {!immersive ? (
-            <div className="absolute left-1/2 top-5 z-30 -translate-x-1/2">
-              <div className="flex items-center gap-1.5 rounded-full border border-orange-200/60 bg-white/80 px-3 py-1.5 shadow-lg shadow-orange-200/25 backdrop-blur-2xl dark:border-orange-300/15 dark:bg-[#1c120d]/80 dark:shadow-none">
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-orange-900/75 transition-colors hover:bg-orange-100 dark:text-orange-100/75 dark:hover:bg-orange-300/10"
-                  onClick={() => setDrawerOpen((current) => !current)}
-                  aria-label="Toggle contents and bookmarks"
-                >
-                  <Menu className="h-4 w-4" />
-                </button>
-                <div className="h-4 w-px bg-orange-200/50 dark:bg-orange-300/15" />
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-orange-900/75 transition-colors hover:bg-orange-100 dark:text-orange-100/75 dark:hover:bg-orange-300/10"
-                  onClick={() => setImmersive(true)}
-                  aria-label="Enter fullscreen"
-                  title="Enter fullscreen"
-                >
-                  <Maximize2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="absolute right-5 top-5 z-30 opacity-0 transition-opacity duration-300 hover:opacity-100">
-              <div className="flex items-center gap-1.5 rounded-full border border-orange-200/60 bg-white/80 px-2.5 py-1.5 shadow-lg shadow-orange-200/25 backdrop-blur-2xl dark:border-orange-300/15 dark:bg-[#1c120d]/80 dark:shadow-none">
-                <button
-                  type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-orange-900/75 transition-colors hover:bg-orange-100 dark:text-orange-100/75 dark:hover:bg-orange-300/10"
-                  onClick={() => setImmersive(false)}
-                  aria-label="Exit fullscreen"
-                  title="Exit fullscreen (Esc)"
-                >
-                  <Minimize2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
+          <ReaderToolbar
+            title={document.title}
+            positionLabel={document.fileType === 'PDF' ? '第 ' + currentPdfPage + ' 页 / ' + (pdfTotal ?? '…') + ' 页' : '已读 ' + Math.round(epubPercentage) + '%'}
+            onPrevious={() => turnPage(-1)} onNext={() => turnPage(1)}
+            onBookmark={handleAddBookmark} onContents={() => setDrawerOpen(value => !value)}
+            onFullscreen={() => setImmersive(value => !value)} immersive={immersive}
+            previousDisabled={document.fileType === 'PDF' && currentPdfPage <= 1}
+            nextDisabled={document.fileType === 'PDF' && pdfTotal !== null && currentPdfPage >= pdfTotal}
+            bookmarkDisabled={!readingReady || (document.fileType === 'PDF' && (pdfViewMode === 'original' ? pdfReadyPage !== pdfOriginalPage : !pdfTextState.paragraphs.length))}
+          >
+            {document.fileType === 'PDF' && <>
+              <label className="flex items-center gap-2 text-sm">排版
+                <select aria-label="阅读排版" value={pdfViewMode} onChange={event => switchPdfLayout(event.target.value as 'text' | 'original')} className="rounded-lg border border-orange-200 bg-transparent px-3 py-2">
+                  <option value="text">随屏排版</option><option value="original">书页排版</option>
+                </select>
+              </label>
+              <form className="flex items-center gap-2" onSubmit={event => {event.preventDefault();handlePdfPageJump();}}>
+                <input aria-label="跳转页码" type="number" min="1" max={pdfTotal ?? undefined} value={pdfPageJumpValue} onChange={event => setPdfPageJumpValue(event.target.value)} placeholder="页码" className="w-20 rounded-lg border border-orange-200 bg-transparent px-2 py-2 text-sm"/>
+                <button type="submit" className="rounded-lg border border-orange-200 px-3 py-2 text-sm">跳转</button>
+              </form>
+              {pdfViewMode === 'original' && <button type="button" className="rounded-lg border border-orange-200 px-3 py-2 text-sm" onClick={() => switchPdfLayout('text', true)}>学习本页</button>}
+              <a href={'/api/documents/' + document.id + '/raw#page=' + currentPdfPage} target="_blank" rel="noreferrer" className="px-2 text-sm underline">打开原文件</a>
+            </>}
+          </ReaderToolbar>
 
-          {!immersive && drawerOpen ? (
+          {drawerOpen ? (
             <>
               <button
                 type="button"
@@ -2488,8 +2535,7 @@ export default function ReaderLayout({
                 </div>
                 <button
                   type="button"
-                  disabled={document.fileType === 'PDF' && pdfViewMode === 'original'}
-                  title={pdfViewMode === 'original' ? '请切换文字学习模式保存阅读位置' : undefined}
+                  disabled={!readingReady || (document.fileType === 'PDF' && pdfViewMode === 'original' && pdfReadyPage !== pdfOriginalPage)}
                   onClick={handleAddBookmark}
                   className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-800 transition-colors hover:bg-orange-100 dark:border-orange-300/15 dark:bg-orange-300/5 dark:text-orange-200 dark:hover:bg-orange-300/10"
                 >
@@ -2597,7 +2643,7 @@ export default function ReaderLayout({
         onDelete={async id=>{await readingRequest('/api/documents/'+document.id+'/reading?entryId='+encodeURIComponent(id),{method:'DELETE'});setEntries(items=>items.filter(item=>item.id!==id));}}
         onJump={jumpReading} onDetailed={()=>{if(toolSelection)setSelectedParagraph({key:toolSelection.location,text:toolSelection.text,preferredPanelSide:'right',anchorY:100,paragraphBounds:{left:24,top:80,right:320,bottom:160}});setToolsOpen(false);setShowDetailed(true);}} onRestoreSelection={setToolSelection}
         onQuote={quote=>{const content=epubContentsRef.current.find(c=>c.document.body.textContent?.includes(quote));if(content){const node=Array.from(content.document.querySelectorAll('p,li')).find(e=>e.textContent?.includes(quote));node?.scrollIntoView({block:'center'});if(node) {(node as HTMLElement).style.backgroundColor='rgba(251,146,60,.3)';}}else{const paragraph=pdfTextState.paragraphs.find(p=>p.text.includes(quote));if(paragraph)jumpToPdfBookmark(getPdfSelectionKey(document.id,paragraph.id));}}}/>
-      <div className="relative flex-1">
+      <div className="relative min-h-0 flex-1">
         {document.fileType === 'EPUB' ? (
           <ReactReader
             url={`/api/documents/${document.id}/raw`}
@@ -2611,87 +2657,29 @@ export default function ReaderLayout({
             epubInitOptions={{ openAs: 'epub' }}
           />
         ) : (
-          <div className="relative flex h-full min-h-0 flex-col pt-20">
-            <div className={cn('shrink-0 border-b px-4 py-3 text-sm', pdfReaderLinkClasses[theme])}>
-              <div className="flex flex-wrap items-center gap-2 pl-10">
-                <button
-                  type="button"
-                  aria-pressed={pdfViewMode === 'text'}
-                  className="rounded-lg border px-3 py-2 aria-pressed:border-orange-500 aria-pressed:bg-orange-600 aria-pressed:font-semibold aria-pressed:text-white"
-                  onClick={() => changePdfViewMode('text')}
-                >
-                  文字学习
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={pdfViewMode === 'original'}
-                  className="rounded-lg border px-3 py-2 aria-pressed:border-orange-500 aria-pressed:bg-orange-600 aria-pressed:font-semibold aria-pressed:text-white"
-                  onClick={() => {
-                    const target = getVisiblePdfBookmarkTarget();
-                    const paragraph = pdfTextState.paragraphs.find(
-                      item => getPdfSelectionKey(document.id, item.id) === target?.location
-                    );
-                    if (paragraph?.pageNumber) setPdfOriginalPage(paragraph.pageNumber);
-                    changePdfViewMode('original');
-                  }}
-                >
-                  PDF 原版
-                </button>
-                <a
-                  href={'/api/documents/' + document.id + '/raw#page=' + pdfOriginalPage + '&toolbar=1&view=FitH'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border px-3 py-2 underline"
-                >
-                  新窗口打开原 PDF
-                </a>
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={event => {
-                    event.preventDefault();
-                    handlePdfPageJump();
-                  }}
-                >
-                  <input
-                    aria-label="PDF 页码"
-                    type="number"
-                    min="1"
-                    max={pdfTextState.pageCount || undefined}
-                    value={pdfPageJumpValue}
-                    onChange={event => setPdfPageJumpValue(event.target.value)}
-                    placeholder={pdfTextState.pageCount ? '1–' + pdfTextState.pageCount + ' 页' : '页码'}
-                    className="w-24 rounded-lg border bg-transparent px-2 py-2"
-                  />
-                  <button type="submit" className="rounded-lg border px-3 py-2">跳转</button>
-                </form>
-              </div>
-              <p className="mt-2 text-xs opacity-75">
-                {pdfViewMode === 'original'
-                  ? '分页原版图像保留图片、表格与排版，不支持直接选词。逐段 AI、进度同步与书签请切回文字学习；图像加载失败时可新窗口打开原 PDF。'
-                  : '文字学习支持逐段 AI 和阅读位置保存；多栏、表格等复杂排版可能失真。扫描件需要 OCR，仍可切换 PDF 原版查看。'}
-              </p>
-              {pdfViewMode === 'text' && pdfPagesWithoutText > 0 && (
-                <p className="mt-1 text-xs">
-                  {pdfPagesWithoutText} 页未提取到文字（可能是图片或空白页），可用 PDF 原版查看。
-                </p>
-              )}
-              {pdfJumpError && <p role="status" className="mt-1 text-xs">{pdfJumpError}</p>}
+          <div className="relative flex h-full min-h-0 flex-col">
+            <div className="shrink-0 border-b px-4 py-2 text-xs opacity-80">
+              <p>{pdfViewMode === 'original' ? '保留图片与书页排版，自动保存页码。点击“学习本页”可查词和分析已提取的文字。' : '文字随屏幕排版，可选词学习；图片和表格请切换“书页排版”。'}</p>
+              {pdfViewMode === 'text' && pdfPagesWithoutText > 0 && <p>{pdfPagesWithoutText} 页没有可提取文字，可在书页排版查看；文字学习需先做 OCR。</p>}
+              {pdfJumpError && <p role="status" className="mt-1">{pdfJumpError}</p>}
             </div>
             {pdfViewMode === 'original' && (
               <PdfOriginalView
                 documentId={document.id}
                 title={document.title}
                 page={pdfOriginalPage}
-                pageCount={pdfTextState.pageCount ?? document.pageCount ?? null}
-                onPageChange={page => {
-                  setPdfJumpError('');
-                  setPdfOriginalPage(page);
+                onPageReady={page => {
+                  if (pdfOriginalPageRef.current !== page) return;
+                  pdfReadyPageRef.current = page;
+                  setPdfReadyPage(page);
+                  if (readingReady && !pendingRestore.current) progressSync.enqueue({location:formatPdfPageLocation(document.id, page),percentage:pdfPageProgress(page, pdfTotal)});
                 }}
               />
             )}
-            <div className={pdfViewMode === 'text' ? 'min-h-0 flex-1 overflow-y-auto' : 'hidden'}>
-            <div className="mx-auto min-h-full max-w-[1440px] px-5 py-14 font-sans text-[1.03rem] leading-[1.85] md:px-8 md:py-16 xl:text-[1.05rem]">
-              <h1 className="mx-auto mb-8 max-w-[1320px] px-2 text-2xl font-bold leading-tight">
+            <div data-pdf-text-scroll className={pdfViewMode === 'text' ? 'min-h-0 flex-1 overflow-y-auto' : 'hidden'} onScroll={() => {const page = getVisiblePdfBookmarkTarget()?.pageNumber;if(page) setPdfVisiblePage(page);}}>
+            <div className="mx-auto w-full px-4 py-6 font-sans sm:px-6 sm:py-8"
+              style={{ maxWidth: 'min(72ch, 800px)', fontSize, lineHeight }}>
+              <h1 className="mb-6 break-words text-xl font-bold leading-snug sm:text-2xl">
                 {document.title}
               </h1>
 
@@ -2714,33 +2702,32 @@ export default function ReaderLayout({
                     No readable PDF text was found.
                   </p>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    此 PDF 可能是扫描件，需要 OCR 后才能逐段学习。请切换「PDF 原版」查看图片页面。
+                    此 PDF 可能是扫描件，需要 OCR 后才能逐段学习。请切换「书页排版」查看图片页面。
                   </p>
                 </div>
               ) : (
-                <div className="space-y-8 pb-16">
+                <div className="space-y-4 pb-20">
                   {pdfPageSpreads.map((spread, spreadIndex) => (
                     <section
                       key={`pdf-spread-${spreadIndex}`}
-                      className="grid grid-cols-1 gap-7 xl:grid-cols-2 xl:items-start"
+                      className="grid grid-cols-1 gap-7"
                     >
                       {spread.map((page) => (
                         <article
                           key={`pdf-page-${page.pageNumber ?? spreadIndex}`}
                           data-pdf-page-number={page.pageNumber ?? undefined}
                           className={cn(
-                            'min-h-[calc(100vh-9rem)] rounded-lg border px-7 py-9 md:px-9 md:py-10',
-                            pdfReaderPageClasses[theme]
+                            'min-w-0',
                           )}
                         >
                           {page.pageNumber ? (
                             <div
                               className={cn(
-                                'mb-6 text-xs font-medium uppercase tracking-[0.12em]',
+                                'mb-3 border-t border-current/10 pt-2 text-[11px] font-medium tracking-wide',
                                 pdfReaderPageMetaClasses[theme]
                               )}
                             >
-                              Page {page.pageNumber}
+                              原 PDF 第 {page.pageNumber} 页
                             </div>
                           ) : null}
 
@@ -2765,8 +2752,8 @@ export default function ReaderLayout({
                                   handlePdfParagraphClick(paragraph, event)
                                 }
                                 className={cn(
-                                  'mb-[1.2em] block w-full rounded-lg px-2 py-1 text-left font-sans text-[1.03rem] leading-[1.85] text-inherit transition-colors focus-visible:outline-none focus-visible:ring-2 xl:text-[1.05rem]',
-                                  'whitespace-normal',
+                                  'mb-[1em] block w-full break-words rounded-md px-0.5 py-0.5 text-left font-sans text-inherit transition-colors focus-visible:outline-none focus-visible:ring-2',
+                                  'whitespace-pre-line',
                                   entries.some(e=>e.kind==='note'&&e.location===selectionKey)?'underline decoration-orange-400 decoration-2 underline-offset-4':'',
                                   pdfReaderParagraphClasses[theme],
                                   isActive

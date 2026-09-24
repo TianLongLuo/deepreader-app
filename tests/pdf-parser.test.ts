@@ -62,6 +62,24 @@ it('keeps AI sentence offsets consistent across wrapped lines', async () => {
   }
 });
 
+it('reflows mechanical line breaks and retains a visual paragraph break without shifting bookmark indices', async () => {
+  const result = await pdfParser.parse(book([[
+    line('This sentence continues'), line('on the next line.', 686),
+    line('A new paragraph starts here.', 652),
+  ].join('\n')]), 'Paragraphs');
+  expect(result.sections[0].paragraphs).toHaveLength(1);
+  expect(result.sections[0].paragraphs[0].rawText).toBe('This sentence continues on the next line.\n\nA new paragraph starts here.');
+});
+
+it('reads a real two-column PDF down each column instead of across columns', async () => {
+  const positioned = (text: string, x: number, y: number) => `BT /F1 12 Tf ${x} ${y} Td (${text}) Tj ET`;
+  const result = await pdfParser.parse(book([[700, 686, 672].flatMap((y, i) => [
+    positioned(`Left column sentence number ${i + 1}.`, 50, y), positioned(`Right column sentence number ${i + 1}.`, 320, y),
+  ]).join('\n')]), 'Columns');
+  expect(result.sections[0].paragraphs).toHaveLength(1);
+  expect(result.sections[0].paragraphs[0].rawText).toBe('Left column sentence number 1. Left column sentence number 2. Left column sentence number 3.\n\nRight column sentence number 1. Right column sentence number 2. Right column sentence number 3.');
+});
+
 it('renders the requested textless page as a real PNG with its artwork', async () => {
   const result = await pdfParser.renderPage(book([line('First page'), '1 0 0 rg 0 0 612 792 re f']), 2);
   expect(result.pageCount).toBe(2);

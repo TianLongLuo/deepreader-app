@@ -255,3 +255,16 @@ it("rejects reading and progress writes while document cleanup is pending", asyn
     await prisma.document.update({ where: { id: "doc" }, data: { status: "PENDING" } });
   }
 });
+
+it("persists physical PDF page progress and bookmarks alongside legacy paragraph locations", async () => {
+  const { formatPdfPageLocation, parsePdfPageLocation } = await import('@/components/reader/pdf-location');
+  const location = formatPdfPageLocation('doc', 7);
+  await readingService.progress('alice', 'owner', 'doc', { location, percentage: 70 });
+  const bookmark = await readingService.create('alice', 'owner', 'doc', { kind: 'bookmark', text: '第 7 页', location });
+  const restored = await readingService.get('alice', 'owner', 'doc');
+  expect(parsePdfPageLocation(restored.progress!.location, 'doc')).toBe(7);
+  expect(restored.items).toContainEqual(expect.objectContaining({ id: bookmark.id, location }));
+  expect((await readingService.get('bob', 'owner', 'doc')).items).not.toContainEqual(expect.objectContaining({ id: bookmark.id }));
+  await readingService.progress('alice', 'owner', 'doc', { location: 'pdf:doc:pdf-p-4', percentage: 50 });
+  expect((await readingService.get('alice', 'owner', 'doc')).progress?.location).toBe('pdf:doc:pdf-p-4');
+});
