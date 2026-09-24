@@ -1,12 +1,12 @@
-
 import { createChildLogger } from '@/lib/logger';
 import { ParsedDocument, ParsedSection, ParsedParagraph } from '@/types/documents';
 import { segmentParagraphs } from './segmentation';
 
 const log = createChildLogger('pdf-parser');
-const PAGE_BREAK_MARKER = '---PAGE_BREAK---';
 
 function ensureNodePdfCanvasGlobals() {
+  // Load the native Node canvas only when parsing, before pdf.js evaluates.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const canvas = require('@napi-rs/canvas');
   const globalScope = globalThis as typeof globalThis & {
     DOMMatrix?: unknown;
@@ -31,6 +31,11 @@ function trimOuterBlankLines(text: string) {
 
 function normalizePdfBlock(block: string) {
   const normalized = block
+    // A discretionary hyphen is a layout instruction, not part of the word.
+    // Keep visible hyphens: without a dictionary we cannot safely distinguish
+    // a wrapped word from a real compound such as "well-known".
+    .replace(/\u00ad[ \t]*\n[ \t]*(?=\p{L})/gu, '')
+    .replace(/\u00ad/g, '')
     .split(/\r?\n/)
     .map(normalizePdfLine)
     .join('\n')
@@ -65,25 +70,58 @@ function normalizeForAnalysis(text: string) {
 }
 
 export class PdfParser {
+  /** Render one physical page on the server, including scanned/image pages. */
+  async renderPage(buffer: Buffer, pageNumber: number) {
+    if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) {
+      throw new RangeError('Invalid PDF page number');
+    }
+    ensureNodePdfCanvasGlobals();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PDFParse } = require('pdf-parse') as typeof import('pdf-parse');
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const info = await parser.getInfo({ parsePageInfo: true, partial: [pageNumber] });
+      const page = info.pages.find(item => item.pageNumber === pageNumber);
+      if (!page) throw new RangeError('PDF page not found');
+      const { width, height } = page;
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+        throw new Error('Invalid PDF page dimensions');
+      }
+      // Bound canvas allocation even for unusually tall/wide pages. Never
+      // render the whole book just to show the requested page.
+      const scale = Math.min(2, 1600 / width, 2400 / height, Math.sqrt(4_000_000 / (width * height)));
+      const result = await parser.getScreenshot({
+        partial: [pageNumber], scale, imageBuffer: true, imageDataUrl: false,
+      });
+      const rendered = result.pages[0];
+      if (!rendered?.data.length) throw new Error('PDF page could not be rendered');
+      return { data: rendered.data, pageCount: result.total, width: rendered.width, height: rendered.height };
+    } finally {
+      await parser.destroy().catch(() => {});
+    }
+  }
+
   /**
    * Parse a PDF buffer into a structured document format.
    */
   async parse(buffer: Buffer, title: string): Promise<ParsedDocument> {
     ensureNodePdfCanvasGlobals();
 
+    // A hoisted import would evaluate pdf.js before the canvas globals exist.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PDFParse } = require('pdf-parse');
     const parser = new PDFParse({ data: buffer });
     log.info({ title, size: buffer.length }, 'Starting PDF parse');
 
     try {
-      const [textResult, infoResult] = await Promise.all([
-        parser.getText({
-          pageJoiner: `\n${PAGE_BREAK_MARKER}\n`,
-          lineEnforce: true,
-          cellSeparator: ' ',
-        }),
-        parser.getInfo().catch(() => null),
-      ]);
+      // PDFParse caches its document only after loading finishes. Calling
+      // getText/getInfo concurrently can load two workers for the same book.
+      const textResult = await parser.getText({
+        pageJoiner: '',
+        lineEnforce: true,
+        cellSeparator: ' ',
+      });
+      const infoResult = await parser.getInfo().catch(() => null);
 
       const info = infoResult?.info ?? {};
       const metadata = {
@@ -99,25 +137,25 @@ export class PdfParser {
         paragraphs: [],
       };
 
-      // Our custom pagerender injects a special page marker
-      const pages = textResult.text.split(PAGE_BREAK_MARKER);
       const currentParagraphs: ParsedParagraph[] = [];
 
-      for (let i = 0; i < pages.length; i++) {
-        const pageText = pages[i].trim();
+      // Use physical page numbers, including blank/scanned pages. Splitting a
+      // concatenated string on a sentinel corrupts pages if the book contains it.
+      for (const page of textResult.pages) {
+        const pageText = page.text.trim();
         if (!pageText) continue;
 
         const paragraphs = splitPdfPageIntoBlocks(pageText);
 
         for (const rawText of paragraphs) {
           if (normalizeForAnalysis(rawText).length > 0) {
-             const seg = segmentParagraphs(rawText);
-             currentParagraphs.push({
-               rawText,
-               normalizedText: normalizeForAnalysis(rawText),
-               pageNumber: i + 1,
-               sentences: seg.sentences,
-             });
+            const seg = segmentParagraphs(rawText);
+            currentParagraphs.push({
+              rawText,
+              normalizedText: normalizeForAnalysis(rawText),
+              pageNumber: page.num,
+              sentences: seg.sentences,
+            });
           }
         }
       }

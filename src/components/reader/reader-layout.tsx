@@ -16,6 +16,7 @@ import { validSourceLanguage } from './language-tools';
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
+import PdfOriginalView from './pdf-original-view';
 import ReadingTools, { readingRequest, type ReadingEntry, type ReadingSelection } from './reading-tools';
 import type { ParagraphExplanationOutput } from '@/types/explanation';
 import { getActionAnnotationStyle } from './action-annotation-style';
@@ -139,6 +140,7 @@ type ReaderDocument = {
   id: string;
   title: string;
   fileType: string;
+  pageCount?: number | null;
 };
 
 type EpubContents = {
@@ -1147,12 +1149,32 @@ export default function ReaderLayout({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [immersive, setImmersive] = useState(false);
   const [pdfPageJumpValue, setPdfPageJumpValue] = useState('');
+  const [pdfViewMode, setPdfViewMode] = useState<'text' | 'original'>('text');
+  const [pdfOriginalPage, setPdfOriginalPage] = useState(1);
+  const [pdfJumpError, setPdfJumpError] = useState('');
+  const pdfViewModeRef = useRef<'text' | 'original'>('text');
+  const changePdfViewMode = useCallback((mode: 'text' | 'original') => {
+    pdfViewModeRef.current = mode;
+    setPdfViewMode(mode);
+    setToolsOpen(false);
+    setShowDetailed(false);
+    setPdfJumpError('');
+  }, []);
   const userBookmarks: UserBookmark[] = entries.filter(e=>e.kind==='bookmark'&&e.location).map(e=>({id:e.id,label:e.text,location:e.location!,createdAt:e.createdAt}));
   const [pdfTextState, setPdfTextState] = useState<PdfTextState>({
     status: document.fileType === 'PDF' ? 'loading' : 'idle',
     paragraphs: [],
     pageCount: null,
   });
+  const pdfPagesWithoutText = useMemo(() => {
+    if (pdfTextState.status !== 'ready' || pdfTextState.pageCount === null) return 0;
+    const pagesWithText = new Set(
+      pdfTextState.paragraphs
+        .map(paragraph => paragraph.pageNumber)
+        .filter((page): page is number => typeof page === 'number' && page > 0)
+    );
+    return Math.max(0, pdfTextState.pageCount - pagesWithText.size);
+  }, [pdfTextState]);
   const [pdfExplanations, setPdfExplanations] = useState<
     Record<string, ParagraphExplanationOutput>
   >({});
@@ -1360,6 +1382,7 @@ export default function ReaderLayout({
   );
 
   const getVisiblePdfBookmarkTarget = useCallback(() => {
+    if (pdfViewModeRef.current === 'original') return null;
     if (document.fileType !== 'PDF') {
       return null;
     }
@@ -2222,6 +2245,8 @@ export default function ReaderLayout({
         return;
       }
 
+      changePdfViewMode('text');
+      window.requestAnimationFrame(()=>{
       paragraphElement.scrollIntoView({
         block: 'center',
         inline: 'center',
@@ -2231,18 +2256,32 @@ export default function ReaderLayout({
       window.requestAnimationFrame(() => {
         openPdfParagraph(paragraph, paragraphElement);
       });
+      });
     },
-    [openPdfParagraph, pdfTextState.paragraphs]
+    [openPdfParagraph, pdfTextState.paragraphs, changePdfViewMode]
   );
 
   const jumpToPdfPage = useCallback(
     (pageNumber: number) => {
+      if (
+        !Number.isInteger(pageNumber) || pageNumber < 1 ||
+        (pdfTextState.pageCount && pageNumber > pdfTextState.pageCount)
+      ) return false;
+      if (pdfViewMode === 'original') {
+        setPdfOriginalPage(pageNumber);
+        setDrawerOpen(false);
+        return true;
+      }
       const targetPage = pdfPageGroups.find(
         (page) => page.pageNumber === pageNumber
       );
 
       if (!targetPage) {
-        return false;
+        setPdfOriginalPage(pageNumber);
+        changePdfViewMode('original');
+        setDrawerOpen(false);
+        setPdfJumpError('此页没有可学习文字，已切换到 PDF 原版。');
+        return true;
       }
 
       const pageElement = containerRef.current?.querySelector<HTMLElement>(
@@ -2261,20 +2300,22 @@ export default function ReaderLayout({
       setDrawerOpen(false);
       return true;
     },
-    [pdfPageGroups]
+    [pdfPageGroups, pdfTextState.pageCount, pdfViewMode, changePdfViewMode]
   );
 
   const handlePdfPageJump = useCallback(() => {
-    const pageNumber = Number.parseInt(pdfPageJumpValue, 10);
+    const pageNumber = Number(pdfPageJumpValue);
 
-    if (!Number.isFinite(pageNumber)) {
+    setPdfJumpError('');
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+      setPdfJumpError('请输入有效的 PDF 页码。');
       return;
     }
 
     const didJump = jumpToPdfPage(pageNumber);
     if (didJump) {
       setPdfPageJumpValue('');
-    }
+    } else setPdfJumpError('页码超出此 PDF 的范围。');
   }, [jumpToPdfPage, pdfPageJumpValue]);
 
   const handleBookmarkSelect = useCallback(
@@ -2436,6 +2477,8 @@ export default function ReaderLayout({
                 </div>
                 <button
                   type="button"
+                  disabled={document.fileType === 'PDF' && pdfViewMode === 'original'}
+                  title={pdfViewMode === 'original' ? '请切换文字学习模式保存阅读位置' : undefined}
                   onClick={handleAddBookmark}
                   className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-800 transition-colors hover:bg-orange-100 dark:border-orange-300/15 dark:bg-orange-300/5 dark:text-orange-200 dark:hover:bg-orange-300/10"
                 >
@@ -2557,19 +2600,85 @@ export default function ReaderLayout({
             epubInitOptions={{ openAs: 'epub' }}
           />
         ) : (
-          <div className="relative h-full overflow-y-auto">
-            <a
-              href={`/api/documents/${document.id}/raw#toolbar=1&view=FitH`}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(
-                'absolute right-5 top-5 z-10 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm backdrop-blur-md transition-colors',
-                pdfReaderLinkClasses[theme]
+          <div className="relative flex h-full min-h-0 flex-col pt-20">
+            <div className={cn('shrink-0 border-b px-4 py-3 text-sm', pdfReaderLinkClasses[theme])}>
+              <div className="flex flex-wrap items-center gap-2 pl-10">
+                <button
+                  type="button"
+                  aria-pressed={pdfViewMode === 'text'}
+                  className="rounded-lg border px-3 py-2 aria-pressed:border-orange-500 aria-pressed:bg-orange-600 aria-pressed:font-semibold aria-pressed:text-white"
+                  onClick={() => changePdfViewMode('text')}
+                >
+                  文字学习
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={pdfViewMode === 'original'}
+                  className="rounded-lg border px-3 py-2 aria-pressed:border-orange-500 aria-pressed:bg-orange-600 aria-pressed:font-semibold aria-pressed:text-white"
+                  onClick={() => {
+                    const target = getVisiblePdfBookmarkTarget();
+                    const paragraph = pdfTextState.paragraphs.find(
+                      item => getPdfSelectionKey(document.id, item.id) === target?.location
+                    );
+                    if (paragraph?.pageNumber) setPdfOriginalPage(paragraph.pageNumber);
+                    changePdfViewMode('original');
+                  }}
+                >
+                  PDF 原版
+                </button>
+                <a
+                  href={'/api/documents/' + document.id + '/raw#page=' + pdfOriginalPage + '&toolbar=1&view=FitH'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border px-3 py-2 underline"
+                >
+                  新窗口打开原 PDF
+                </a>
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={event => {
+                    event.preventDefault();
+                    handlePdfPageJump();
+                  }}
+                >
+                  <input
+                    aria-label="PDF 页码"
+                    type="number"
+                    min="1"
+                    max={pdfTextState.pageCount || undefined}
+                    value={pdfPageJumpValue}
+                    onChange={event => setPdfPageJumpValue(event.target.value)}
+                    placeholder={pdfTextState.pageCount ? '1–' + pdfTextState.pageCount + ' 页' : '页码'}
+                    className="w-24 rounded-lg border bg-transparent px-2 py-2"
+                  />
+                  <button type="submit" className="rounded-lg border px-3 py-2">跳转</button>
+                </form>
+              </div>
+              <p className="mt-2 text-xs opacity-75">
+                {pdfViewMode === 'original'
+                  ? '分页原版图像保留图片、表格与排版，不支持直接选词。逐段 AI、进度同步与书签请切回文字学习；图像加载失败时可新窗口打开原 PDF。'
+                  : '文字学习支持逐段 AI 和阅读位置保存；多栏、表格等复杂排版可能失真。扫描件需要 OCR，仍可切换 PDF 原版查看。'}
+              </p>
+              {pdfViewMode === 'text' && pdfPagesWithoutText > 0 && (
+                <p className="mt-1 text-xs">
+                  {pdfPagesWithoutText} 页未提取到文字（可能是图片或空白页），可用 PDF 原版查看。
+                </p>
               )}
-            >
-              Open original PDF
-            </a>
-
+              {pdfJumpError && <p role="status" className="mt-1 text-xs">{pdfJumpError}</p>}
+            </div>
+            {pdfViewMode === 'original' && (
+              <PdfOriginalView
+                documentId={document.id}
+                title={document.title}
+                page={pdfOriginalPage}
+                pageCount={pdfTextState.pageCount ?? document.pageCount ?? null}
+                onPageChange={page => {
+                  setPdfJumpError('');
+                  setPdfOriginalPage(page);
+                }}
+              />
+            )}
+            <div className={pdfViewMode === 'text' ? 'min-h-0 flex-1 overflow-y-auto' : 'hidden'}>
             <div className="mx-auto min-h-full max-w-[1440px] px-5 py-14 font-sans text-[1.03rem] leading-[1.85] md:px-8 md:py-16 xl:text-[1.05rem]">
               <h1 className="mx-auto mb-8 max-w-[1320px] px-2 text-2xl font-bold leading-tight">
                 {document.title}
@@ -2594,7 +2703,7 @@ export default function ReaderLayout({
                     No readable PDF text was found.
                   </p>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    This file may be scanned images instead of selectable text.
+                    此 PDF 可能是扫描件，需要 OCR 后才能逐段学习。请切换「PDF 原版」查看图片页面。
                   </p>
                 </div>
               ) : (
@@ -2646,7 +2755,7 @@ export default function ReaderLayout({
                                 }
                                 className={cn(
                                   'mb-[1.2em] block w-full rounded-lg px-2 py-1 text-left font-sans text-[1.03rem] leading-[1.85] text-inherit transition-colors focus-visible:outline-none focus-visible:ring-2 xl:text-[1.05rem]',
-                                  'whitespace-pre-wrap',
+                                  'whitespace-normal',
                                   entries.some(e=>e.kind==='note'&&e.location===selectionKey)?'underline decoration-orange-400 decoration-2 underline-offset-4':'',
                                   pdfReaderParagraphClasses[theme],
                                   isActive
@@ -2672,6 +2781,7 @@ export default function ReaderLayout({
                   ))}
                 </div>
               )}
+            </div>
             </div>
           </div>
         )}
