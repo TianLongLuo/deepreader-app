@@ -4,7 +4,7 @@ import DocumentList from '@/components/documents/document-list';
 
 export default async function DocumentsPage() {
   const user = await requireAuth();
-  const documents = await documentService.listDocuments(user.workspaceId!);
+  const documents = await documentService.listDocuments(user.workspaceId!, user.id);
 
   return (
     <div className="cat-page-shell mx-auto max-w-6xl space-y-8 animate-in fade-in duration-500">

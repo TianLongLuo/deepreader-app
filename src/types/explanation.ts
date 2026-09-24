@@ -140,6 +140,10 @@ export type ParagraphExplanationOutput = ParagraphExplanation;
 
 export type ExplanationRequest = {
   paragraphId: string;
+  previousText?: string;
+  nextText?: string;
+  learningDepth?: 'quick' | 'structure' | 'grammar';
+  signal?: AbortSignal;
   forceRegenerate?: boolean;
   bilingualMode?: boolean;
   grammarMode?: boolean;

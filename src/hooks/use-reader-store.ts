@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 type ReaderState = {
+  fontSize: number;
+  lineHeight: number;
+  setTypography: (fontSize: number, lineHeight: number) => void;
+  readingLevel: 'beginner' | 'intermediate' | 'advanced';
+  setReadingLevel: (readingLevel: 'beginner' | 'intermediate' | 'advanced') => void;
   theme: 'light' | 'dark' | 'sepia';
   setTheme: (theme: 'light' | 'dark' | 'sepia') => void;
   learningDepth: 'quick' | 'structure' | 'grammar';
@@ -25,6 +30,11 @@ type ReaderState = {
 export const useReaderStore = create<ReaderState>()(
   persist(
     (set) => ({
+      fontSize: 18,
+      lineHeight: 1.8,
+      setTypography: (fontSize, lineHeight) => set({fontSize, lineHeight}),
+      readingLevel: 'intermediate',
+      setReadingLevel: (readingLevel) => set({readingLevel}),
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
       learningDepth: 'quick',

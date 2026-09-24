@@ -10,6 +10,7 @@ import { DocumentDTO } from '@/types/documents';
 type DocumentListItem = Omit<DocumentDTO, 'createdAt' | 'updatedAt'> & {
   createdAt: string | Date;
   updatedAt: string | Date;
+  readingProgress?: { location: string; percentage: number; updatedAt: string | Date }[];
 };
 
 export default function DocumentList({
@@ -18,6 +19,21 @@ export default function DocumentList({
   initialDocuments: DocumentListItem[];
 }) {
   const [documents, setDocuments] = useState(initialDocuments);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('recent');
+  const [error, setError] = useState('');
+  const visible = [...documents].filter(d => d.title.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : sort === 'upload' ? +new Date(b.createdAt) - +new Date(a.createdAt) : +new Date(b.readingProgress?.[0]?.updatedAt ?? b.createdAt) - +new Date(a.readingProgress?.[0]?.updatedAt ?? a.createdAt));
+  const handleRename = async (doc: DocumentListItem) => {
+    const title = window.prompt('Book title', doc.title)?.trim();
+    if (!title || title === doc.title) return;
+    setError('');
+    try {
+      const response = await fetch('/api/documents/' + doc.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to rename book');
+      setDocuments(list => list.map(d => d.id === doc.id ? { ...d, title: payload.title } : d));
+    } catch (e) { setError((e as Error).message); }
+  };
 
   const handleDelete = async (documentId: string) => {
     const confirmed = window.confirm(
@@ -57,10 +73,15 @@ export default function DocumentList({
   }
 
   return (
-    <div className="relative z-10 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {documents.map((doc) => (
-        <DocumentCard key={doc.id} doc={doc} onDelete={handleDelete} />
+    <div className="relative z-10 space-y-5">
+      <div className="flex flex-wrap gap-3"><input aria-label="Search books" placeholder="Search your books…" value={query} onChange={e => setQuery(e.target.value)} className="flex-1 rounded-xl border border-orange-200 bg-white p-3" /><select aria-label="Sort books" value={sort} onChange={e => setSort(e.target.value)} className="rounded-xl border border-orange-200 bg-white p-3"><option value="recent">Recently read</option><option value="upload">Recently uploaded</option><option value="title">Title</option></select><Link href="/study" className="rounded-xl bg-orange-100 p-3">Notes & vocabulary</Link></div>
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {!visible.length && <p>No books match your search.</p>}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {visible.map((doc) => (
+        <DocumentCard key={doc.id} doc={doc} onDelete={handleDelete} onRename={handleRename} />
       ))}
+      </div>
     </div>
   );
 }
@@ -68,9 +89,11 @@ export default function DocumentList({
 function DocumentCard({
   doc,
   onDelete,
+  onRename,
 }: {
   doc: DocumentListItem;
   onDelete: (documentId: string) => Promise<void>;
+  onRename: (doc: DocumentListItem) => Promise<void>;
 }) {
   const isReady = doc.parseStatus === 'COMPLETED';
   const isProcessing = doc.parseStatus === 'PROCESSING' || doc.parseStatus === 'PENDING';
@@ -90,6 +113,7 @@ function DocumentCard({
         <Trash2 className="h-4 w-4" />
       </button>
 
+      <button onClick={() => void onRename(doc)} className="absolute left-3 top-3 z-20 rounded-full bg-white/90 px-3 py-2 text-sm text-orange-800">Rename</button>
       {!isReady && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-orange-50/70 backdrop-blur-[2px]">
             {isProcessing ? (
@@ -106,7 +130,7 @@ function DocumentCard({
         </div>
       )}
       
-      <Link href={isReady ? `/reader/${doc.id}` : '#'} className={!isReady ? 'pointer-events-none opacity-50' : ''}>
+      <Link href={isReady ? `/reader/${doc.id}${doc.readingProgress?.[0]?.location ? `?location=${encodeURIComponent(doc.readingProgress[0].location)}` : ''}` : '#'} className={!isReady ? 'pointer-events-none opacity-50' : ''}>
         <div className="flex h-36 items-center justify-center border-b border-orange-200 bg-gradient-to-br from-orange-100 via-amber-50 to-white transition-colors group-hover:from-orange-200/80">
           <div className="rounded-full bg-white/70 p-4 text-4xl shadow-inner shadow-orange-100">📖</div>
         </div>
@@ -120,6 +144,7 @@ function DocumentCard({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {doc.readingProgress?.[0] && <div className="mb-3 space-y-2"><div className="flex justify-between text-sm text-orange-800"><span>Continue reading</span><span>{Math.round(doc.readingProgress[0].percentage)}%</span></div><progress aria-label="Reading progress" value={doc.readingProgress[0].percentage} max={100} className="h-2 w-full accent-orange-500" /></div>}
           <div className="flex items-center text-xs text-orange-900/50">
             <Clock className="w-3 h-3 mr-1" />
             {new Date(doc.createdAt).toLocaleDateString()}

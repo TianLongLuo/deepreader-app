@@ -53,3 +53,21 @@ export async function DELETE(
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { readingUser, readingBody } = await import('@/server/reading/http');
+    const { requireDocument } = await import('@/server/reading/reading.service');
+    const { z } = await import('zod');
+    const { prisma } = await import('@/lib/prisma');
+    const user = await readingUser();
+    const { title } = z.object({ title: z.string().trim().min(1).max(250) }).strict().parse(await readingBody(req));
+    const { id } = await params;
+    await requireDocument(id, user.workspaceId);
+    await prisma.document.updateMany({ where: { id, workspaceId: user.workspaceId }, data: { title } });
+    return NextResponse.json({ id, title });
+  } catch (error) {
+    const { readingFailure } = await import('@/server/reading/http');
+    return readingFailure(error);
+  }
+}

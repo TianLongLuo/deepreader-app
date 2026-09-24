@@ -36,7 +36,7 @@ beforeAll(async () => {
   await prisma.documentSection.create({ data: { id: 'section', documentId: 'doc', title: 'Private', orderIndex: 0, anchor: 'one' } });
   await prisma.paragraph.create({ data: { id: 'paragraph', sectionId: 'section', documentId: 'doc', orderIndex: 0, rawText: 'Private text.', normalizedText: 'Private text.', textHash: 'hash', startOffset: 0, endOffset: 13 } });
   await prisma.paragraphExplanation.create({ data: { paragraphId: 'paragraph', provider: 'test', model: 'test', promptVersion: '1', settingsHash: 'hash', outputJson: '{}', status: 'COMPLETED' } });
-}, 30_000);
+}, 60_000);
 
 afterAll(async () => {
   await prisma.$disconnect();

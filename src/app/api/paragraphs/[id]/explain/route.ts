@@ -1,87 +1,23 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { aiExplanationService } from '@/server/ai/explanation.service';
+import { explanationStream } from '@/server/ai/explanation-stream';
+import { explanationOptions } from '@/server/ai/explanation-input';
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth();
-    if (!user.workspaceId) {
-      return NextResponse.json({ error: 'No workspace attached' }, { status: 400 });
-    }
-
-    const resolvedParams = await params;
-    const paragraphId = resolvedParams.id;
-    
-    // Parse body for options
-    let opts: Record<string, unknown> = {};
-    try {
-        const body: unknown = await req.json();
-        if (body && typeof body === 'object' && !Array.isArray(body)) {
-          opts = body as Record<string, unknown>;
-        }
-    } catch {}
-
-    if (opts.stream) {
-      const encoder = new TextEncoder();
-      const streamOptions = { ...opts };
-      delete streamOptions.stream;
-      const explanationRequest = {
-        ...streamOptions,
-        paragraphId,
-      };
-
-      return new Response(
-        new ReadableStream({
-          async start(controller) {
-            const send = (event: unknown) => {
-              controller.enqueue(
-                encoder.encode(`${JSON.stringify(event)}\n`)
-              );
-            };
-
-            try {
-              for await (const event of aiExplanationService.streamExplain(
-                user.workspaceId!,
-                explanationRequest,
-                user.email
-              )) {
-                send(event);
-              }
-            } catch (error) {
-              send({
-                type: 'error',
-                error: (error as Error).message,
-              });
-            } finally {
-              controller.close();
-            }
-          },
-        }),
-        {
-          headers: {
-            'Content-Type': 'application/x-ndjson; charset=utf-8',
-            'Cache-Control': 'no-cache, no-transform',
-            'X-Accel-Buffering': 'no',
-          },
-        }
-      );
-    }
-
-    const explanation = await aiExplanationService.explain(
-      user.workspaceId,
-      {
-        ...opts,
-        paragraphId
-      },
-      user.email
-    );
-
-    return NextResponse.json(explanation);
+    if (!user.workspaceId) return NextResponse.json({ error: 'No workspace attached' }, { status: 400 });
+    const parsed = explanationOptions.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return NextResponse.json({ error: 'Invalid explanation options' }, { status: 400 });
+    const { stream, ...options } = parsed.data;
+    const { id: paragraphId } = await params;
+    const input = { ...options, paragraphId };
+    if (stream) return explanationStream(req.signal, signal => aiExplanationService.streamExplain(user.workspaceId!, { ...input, signal }, user.email));
+    return NextResponse.json(await aiExplanationService.explain(user.workspaceId, { ...input, signal: req.signal }, user.email));
   } catch (error) {
-    console.error('Explanation generation error:', error);
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    if (req.signal.aborted) return new Response(null, { status: 499 });
+    const message = error instanceof Error ? error.message : 'Analysis failed';
+    return NextResponse.json({ error: message }, { status: message === 'Authentication required' ? 401 : message.startsWith('Paragraph not found') ? 404 : 500 });
   }
 }

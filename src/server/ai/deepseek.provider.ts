@@ -5,7 +5,7 @@ import {
   AICompletionStreamChunk,
 } from '@/types/ai';
 import { createChildLogger } from '@/lib/logger';
-import { delay } from '@/lib/utils';
+import { abortableDelay } from '@/server/reading-assistant/cancellation';
 import {
   resolveDeepSeekModel,
   resolveDeepSeekReasoningEffort,
@@ -45,6 +45,7 @@ export class DeepSeekProvider implements AIProviderInterface {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        request.signal?.throwIfAborted();
         const response = await this.callApi(request);
         const latencyMs = Date.now() - startTime;
 
@@ -64,6 +65,7 @@ export class DeepSeekProvider implements AIProviderInterface {
           provider: this.providerKey,
         };
       } catch (error) {
+        request.signal?.throwIfAborted();
         lastError = error as Error;
         log.warn(
           { attempt, maxAttempts, error: (error as Error).message },
@@ -72,7 +74,7 @@ export class DeepSeekProvider implements AIProviderInterface {
 
         if (attempt < maxAttempts && this.shouldRetry(error as Error)) {
           const backoffMs = Math.min(750 * Math.pow(2, attempt - 1), 2500);
-          await delay(backoffMs);
+          await abortableDelay(backoffMs, request.signal);
           continue;
         }
 
@@ -160,7 +162,7 @@ export class DeepSeekProvider implements AIProviderInterface {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(this.buildPayload(request, false)),
-        signal: controller.signal,
+        signal: request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
       });
 
       if (!response.ok) {
@@ -210,6 +212,7 @@ export class DeepSeekProvider implements AIProviderInterface {
         raw: JSON.stringify(data),
       };
     } finally {
+      controller.abort();
       clearTimeout(timeout);
     }
   }
@@ -233,7 +236,7 @@ export class DeepSeekProvider implements AIProviderInterface {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(this.buildPayload(request, true)),
-        signal: controller.signal,
+        signal: request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
       });
 
       if (!response.ok) {
@@ -304,6 +307,7 @@ export class DeepSeekProvider implements AIProviderInterface {
         yield chunk;
       }
     } finally {
+      controller.abort();
       clearTimeout(timeout);
     }
   }

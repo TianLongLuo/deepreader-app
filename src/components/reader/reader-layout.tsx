@@ -15,6 +15,7 @@ import { BookOpenText, BookmarkPlus, Maximize2, Menu, Minimize2 } from 'lucide-r
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
+import ReadingTools, { readingRequest, type ReadingEntry, type ReadingSelection } from './reading-tools';
 import type { ParagraphExplanationOutput } from '@/types/explanation';
 import { getActionAnnotationStyle } from './action-annotation-style';
 import {
@@ -147,7 +148,10 @@ type EpubContents = {
 };
 
 type RenditionLike = {
+  on?: (event: string, callback: (value: {start?:{cfi?:string;percentage?:number;index?:number};end?:unknown}) => void) => void;
   book?: {
+    ready?: Promise<unknown>;
+    locations?: { generate: (chars: number) => Promise<unknown>; percentageFromCfi: (cfi: string) => number };
     section: {
       (target: string): { href: string; index: number } | null;
       (target: number): { href: string; index: number } | null;
@@ -1094,11 +1098,25 @@ export default function ReaderLayout({
 }) {
   const {
     theme,
+    fontSize, lineHeight,
     explanationPanelWidth,
     explanationPanelHeight,
     setExplanationPanelSize,
   } = useReaderStore();
 
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [showDetailed, setShowDetailed] = useState(false);
+  const [toolSelection, setToolSelection] = useState<ReadingSelection|null>(null);
+  const [entries, setEntries] = useState<ReadingEntry[]>([]);
+  const [readingReady, setReadingReady] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  const pendingRestore = useRef<string|null>(null);
+  const progressRef = useRef({location:'',percentage:0});
+  const epubContentsRef = useRef<EpubContents[]>([]);
+  const entriesRef = useRef<ReadingEntry[]>([]);
+  useEffect(()=>{entriesRef.current = entries;},[entries]);
+  const typographyRef = useRef({fontSize,lineHeight});
+  useEffect(()=>{typographyRef.current = {fontSize,lineHeight};},[fontSize,lineHeight]);
   const [location, setLocation] = useState<string | number>(0);
   const [selectedParagraph, setSelectedParagraph] = useState<{
     key: string;
@@ -1126,9 +1144,7 @@ export default function ReaderLayout({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [immersive, setImmersive] = useState(false);
   const [pdfPageJumpValue, setPdfPageJumpValue] = useState('');
-  const [userBookmarks, setUserBookmarks] = useState<UserBookmark[]>(() =>
-    readStoredBookmarks(currentUser.id, document.id)
-  );
+  const userBookmarks: UserBookmark[] = entries.filter(e=>e.kind==='bookmark'&&e.location).map(e=>({id:e.id,label:e.text,location:e.location!,createdAt:e.createdAt}));
   const [pdfTextState, setPdfTextState] = useState<PdfTextState>({
     status: document.fileType === 'PDF' ? 'loading' : 'idle',
     paragraphs: [],
@@ -1274,6 +1290,8 @@ export default function ReaderLayout({
       activeFocusTargetRef.current = null;
       setActiveSentenceIndex(null);
       setActiveFocusTarget(null);
+      setShowDetailed(false);
+      setToolsOpen(true);
       setSelectedParagraph({
         key: cfiRange,
         text: mapping.text,
@@ -1311,6 +1329,8 @@ export default function ReaderLayout({
       activeFocusTargetRef.current = null;
       setActiveSentenceIndex(null);
       setActiveFocusTarget(null);
+      setShowDetailed(false);
+      setToolsOpen(true);
       setSelectedParagraph({
         key: getPdfSelectionKey(document.id, paragraph.id),
         text,
@@ -1329,28 +1349,16 @@ export default function ReaderLayout({
       paragraph: PdfTextParagraph,
       event: ReactMouseEvent<HTMLButtonElement>
     ) => {
+      const selected = window.getSelection()?.toString().trim();
+      if (selected) {setToolSelection({text:selected,location:getPdfSelectionKey(document.id,paragraph.id),previousText:paragraph.text,chapterText:pdfTextState.paragraphs.filter(p=>p.pageNumber===paragraph.pageNumber).map(p=>p.text).join('\n')});setToolsOpen(true);return;}
       openPdfParagraph(paragraph, event.currentTarget);
     },
-    [openPdfParagraph]
+    [openPdfParagraph, document.id, pdfTextState.paragraphs]
   );
 
   const getVisiblePdfBookmarkTarget = useCallback(() => {
     if (document.fileType !== 'PDF') {
       return null;
-    }
-
-    if (selectedParagraph?.key.startsWith(`pdf:${document.id}:`)) {
-      const paragraphId = getPdfParagraphIdFromSelectionKey(selectedParagraph.key);
-      const paragraph = pdfTextState.paragraphs.find(
-        (item) => item.id === paragraphId
-      );
-
-      if (paragraph) {
-        return {
-          location: selectedParagraph.key,
-          label: selectedParagraph.text.slice(0, 48),
-        };
-      }
     }
 
     const container = containerRef.current;
@@ -1444,6 +1452,7 @@ export default function ReaderLayout({
           return;
         }
 
+        if (contents.window.getSelection()?.toString().trim()) return;
         event.preventDefault();
         event.stopPropagation();
         handleParagraphClick(element, contents);
@@ -1796,16 +1805,7 @@ export default function ReaderLayout({
     };
   }, [closeExplanationPanel, selectedParagraph]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
 
-    window.localStorage.setItem(
-      getBookmarkStorageKey(currentUser.id, document.id),
-      JSON.stringify(userBookmarks)
-    );
-  }, [currentUser.id, document.id, userBookmarks]);
 
   useEffect(() => {
     if (!resizeState) {
@@ -2100,9 +2100,24 @@ export default function ReaderLayout({
   const getRendition = (rendition: RenditionLike) => {
     renditionRef.current = rendition;
     registerThemes(rendition);
+    if (!hooksRegisteredRef.current) {
+      void rendition.book?.ready?.then(()=>rendition.book?.locations?.generate(1600)).catch(()=>{});
+      rendition.on?.('relocated', (value) => {
+        if (value.start?.cfi) progressRef.current = {location:value.start.cfi, percentage:Math.max(0,Math.min(100,(rendition.book?.locations?.percentageFromCfi(value.start.cfi)||value.start.percentage||0)*100))};
+      });
+    }
 
     if (!hooksRegisteredRef.current) {
       rendition.hooks.content.register((contents: EpubContents) => {
+        epubContentsRef.current = [...epubContentsRef.current.filter(c=>c.document.documentElement.isConnected),contents];
+        contents.addStylesheetCss('body, p, li { font-size: '+typographyRef.current.fontSize+'px !important; line-height: '+typographyRef.current.lineHeight+' !important; }','reader-typography');
+        contents.document.addEventListener('mouseup',()=>{
+          const selected = contents.window.getSelection();const text=selected?.toString().trim();
+          if(!text||!selected?.rangeCount)return;
+          const range=selected.getRangeAt(0);const parent=range.commonAncestorContainer.parentElement;
+          setToolSelection({text,location:contents.cfiFromRange(range),previousText:parent?.textContent||'',chapterText:contents.document.body.textContent||''});setToolsOpen(true);
+        });
+        contents.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{if(entriesRef.current.some(e=>e.kind==='note'&&node.textContent?.includes(e.text)))node.style.boxShadow='inset 0 -2px #f97316';});
         installInteractiveParagraphs(contents);
         installWheelNavigation(contents);
       });
@@ -2110,6 +2125,10 @@ export default function ReaderLayout({
     }
   };
 
+  const saveReadingEntry = useCallback(async (kind:string,text:string,note='',entryLocation?:string) => {
+    const data = await readingRequest('/api/documents/'+document.id+'/reading',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,text,note,location:entryLocation||(document.fileType==='PDF'?getVisiblePdfBookmarkTarget()?.location:progressRef.current.location)||''})});
+    setEntries(current=>[data.item,...current.filter(item=>item.id!==data.item.id)]);
+  },[document.id,document.fileType,getVisiblePdfBookmarkTarget]);
   const handleAddBookmark = useCallback(() => {
     let bookmarkLocation: string | null = null;
     let suggestedLabel = `Bookmark ${userBookmarks.length + 1}`;
@@ -2147,15 +2166,7 @@ export default function ReaderLayout({
       return;
     }
 
-    setUserBookmarks((current) => [
-      {
-        id: crypto.randomUUID(),
-        label,
-        location: bookmarkLocation,
-        createdAt: new Date().toISOString(),
-      },
-      ...current.filter((bookmark) => bookmark.location !== bookmarkLocation),
-    ]);
+    void saveReadingEntry('bookmark', label, '', bookmarkLocation).catch((error) => setSyncError(error.message));
   }, [
     document.fileType,
     getVisiblePdfBookmarkTarget,
@@ -2163,6 +2174,7 @@ export default function ReaderLayout({
     selectedParagraph?.text,
     tocItems,
     userBookmarks.length,
+    saveReadingEntry,
   ]);
 
   const jumpToLocation = useCallback((target: string) => {
@@ -2273,6 +2285,70 @@ export default function ReaderLayout({
     },
     [document.fileType, jumpToLocation, jumpToPdfBookmark]
   );
+
+  const jumpReading = useCallback((target:string)=>{if(document.fileType==='PDF')jumpToPdfBookmark(target);else jumpToLocation(target);},[document.fileType,jumpToPdfBookmark,jumpToLocation]);
+  const jumpReadingRef = useRef(jumpReading); useEffect(()=>{jumpReadingRef.current=jumpReading;},[jumpReading]);
+  useEffect(()=>{
+    let disposed=false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    const loadReading = async()=>{try {
+      const data=await readingRequest('/api/documents/'+document.id+'/reading',{signal:controller.signal});
+      if(disposed)return;
+      const merged:ReadingEntry[]=[...data.items];
+      for(const bookmark of readStoredBookmarks(currentUser.id,document.id)) {
+        if(merged.some(item=>item.kind==='bookmark'&&item.location===bookmark.location))continue;
+        const saved=await readingRequest('/api/documents/'+document.id+'/reading',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'bookmark',text:bookmark.label,location:bookmark.location})});merged.push(saved.item);
+      }
+      if(disposed)return;window.localStorage.removeItem(getBookmarkStorageKey(currentUser.id,document.id));setEntries(merged);setReadingReady(true);
+      const target=new URLSearchParams(window.location.search).get('location')||data.progress?.location;
+      if(target)pendingRestore.current=target;
+      setSyncError('');
+    } catch(error) {if(!disposed){setSyncError(error instanceof Error?error.message:'Could not sync reading data');retryTimer=setTimeout(()=>void loadReading(),5000);}}};
+    void loadReading();
+    return ()=>{disposed=true;controller.abort();clearTimeout(retryTimer);};
+  },[document.id,currentUser.id]);
+  useEffect(()=>{
+    if(!readingReady)return;
+    if(pendingRestore.current && (document.fileType==='EPUB'||pdfTextState.status==='ready')) {
+      const target=pendingRestore.current;pendingRestore.current=null;jumpReadingRef.current(target);
+    }
+  },[readingReady,document.fileType,pdfTextState.status]);
+  useEffect(()=>{
+    if(!readingReady)return;
+    let lastSaved='';
+    const save=()=>{
+      if(pendingRestore.current)return;
+      let progress=progressRef.current;
+      if(document.fileType==='PDF') {
+        const target=getVisiblePdfBookmarkTarget();if(!target)return;
+        const index=pdfTextState.paragraphs.findIndex(p=>getPdfSelectionKey(document.id,p.id)===target.location);
+        progress={location:target.location,percentage:Math.round((index+1)/Math.max(1,pdfTextState.paragraphs.length)*100)};
+      }
+      if(!progress.location||progress.location===lastSaved)return;
+      const submitted=progress.location;
+      void readingRequest('/api/documents/'+document.id+'/reading',{method:'PATCH',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(progress)}).then(()=>{lastSaved=submitted;setSyncError('');}).catch(e=>setSyncError(e.message));
+    };
+    const timer=window.setInterval(save,3000);window.addEventListener('pagehide',save);
+    return ()=>{clearInterval(timer);window.removeEventListener('pagehide',save);save();};
+  },[readingReady,document.id,document.fileType,pdfTextState.paragraphs,getVisiblePdfBookmarkTarget]);
+  useEffect(()=>{
+    epubContentsRef.current.forEach(c=>c.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{node.style.boxShadow=entries.some(e=>e.kind==='note'&&node.textContent?.includes(e.text))?'inset 0 -2px #f97316':'';}));
+  },[entries]);
+  useEffect(()=>{
+    epubContentsRef.current.forEach(c=>c.addStylesheetCss('body, p, li {font-size:'+fontSize+'px !important;line-height:'+lineHeight+' !important;}','reader-typography'));
+  },[fontSize,lineHeight]);
+  useEffect(()=>{
+    if(!selectedParagraph)return;
+    const index=pdfTextState.paragraphs.findIndex(p=>getPdfSelectionKey(document.id,p.id)===selectedParagraph.key);
+    const active=activeElementRef.current;
+    // Synchronize a selection made in the embedded EPUB document with the tools panel.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setToolSelection({text:selectedParagraph.text,location:selectedParagraph.key,
+      previousText:index>=0?pdfTextState.paragraphs[index-1]?.text:active?.previousElementSibling?.textContent||'',
+      nextText:index>=0?pdfTextState.paragraphs[index+1]?.text:active?.nextElementSibling?.textContent||'',
+      chapterText:index>=0?pdfTextState.paragraphs.filter(p=>p.pageNumber===pdfTextState.paragraphs[index].pageNumber).map(p=>p.text).join('\n'):active?.ownerDocument.body.textContent||selectedParagraph.text});
+  },[selectedParagraph,pdfTextState.paragraphs,document.id]);
 
   const handleLocationChanged = useCallback((nextLocation: string) => {
     if (navigationTarget) {
@@ -2459,6 +2535,11 @@ export default function ReaderLayout({
         </>
       ) : null}
 
+      {syncError&&<div role="alert" className="absolute bottom-20 left-4 z-20 max-w-sm rounded-xl bg-red-50 p-3 text-sm text-red-800">阅读同步失败：{syncError}。稍后将自动重试。</div>}
+      <ReadingTools documentId={document.id} selection={toolSelection} open={toolsOpen} onOpen={()=>setToolsOpen(true)} onClose={()=>setToolsOpen(false)} entries={entries} onSave={saveReadingEntry}
+        onDelete={async id=>{await readingRequest('/api/documents/'+document.id+'/reading?entryId='+encodeURIComponent(id),{method:'DELETE'});setEntries(items=>items.filter(item=>item.id!==id));}}
+        onJump={jumpReading} onDetailed={()=>{if(toolSelection)setSelectedParagraph({key:toolSelection.location,text:toolSelection.text,preferredPanelSide:'right',anchorY:100,paragraphBounds:{left:24,top:80,right:320,bottom:160}});setToolsOpen(false);setShowDetailed(true);}} onRestoreSelection={setToolSelection}
+        onQuote={quote=>{const content=epubContentsRef.current.find(c=>c.document.body.textContent?.includes(quote));if(content){const node=Array.from(content.document.querySelectorAll('p,li')).find(e=>e.textContent?.includes(quote));node?.scrollIntoView({block:'center'});if(node) {(node as HTMLElement).style.backgroundColor='rgba(251,146,60,.3)';}}else{const paragraph=pdfTextState.paragraphs.find(p=>p.text.includes(quote));if(paragraph)jumpToPdfBookmark(getPdfSelectionKey(document.id,paragraph.id));}}}/>
       <div className="relative flex-1">
         {document.fileType === 'EPUB' ? (
           <ReactReader
@@ -2556,12 +2637,14 @@ export default function ReaderLayout({
                                 key={paragraph.id}
                                 type="button"
                                 data-pdf-selection-key={selectionKey}
+                                style={{fontSize, lineHeight}}
                                 onClick={(event) =>
                                   handlePdfParagraphClick(paragraph, event)
                                 }
                                 className={cn(
                                   'mb-[1.2em] block w-full rounded-lg px-2 py-1 text-left font-sans text-[1.03rem] leading-[1.85] text-inherit transition-colors focus-visible:outline-none focus-visible:ring-2 xl:text-[1.05rem]',
                                   'whitespace-pre-wrap',
+                                  entries.some(e=>e.kind==='note'&&e.location===selectionKey)?'underline decoration-orange-400 decoration-2 underline-offset-4':'',
                                   pdfReaderParagraphClasses[theme],
                                   isActive
                                     ? pdfReaderActiveParagraphClasses[theme]
@@ -2591,7 +2674,7 @@ export default function ReaderLayout({
         )}
       </div>
 
-      {selectedParagraph ? (
+      {selectedParagraph && showDetailed ? (
         <div className="absolute inset-0 z-30">
           <button
             type="button"
@@ -2620,8 +2703,10 @@ export default function ReaderLayout({
               />
               <ExplanationPanel
                 documentId={document.id}
-                text={selectedParagraph.text}
+                text={selectedParagraph.text.slice(0,20000)}
                 selectionKey={selectedParagraph.key}
+                previousText={toolSelection?.previousText}
+                nextText={toolSelection?.nextText}
                 onClose={closeExplanationPanel}
                 onActiveSentenceChange={handleActiveSentenceChange}
                 onFocusTargetChange={handleFocusTargetChange}

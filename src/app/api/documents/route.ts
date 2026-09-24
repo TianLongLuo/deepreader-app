@@ -9,7 +9,7 @@ export async function GET() {
       return NextResponse.json({ error: 'No workspace attached' }, { status: 400 });
     }
 
-    const documents = await documentService.listDocuments(user.workspaceId);
+    const documents = await documentService.listDocuments(user.workspaceId, user.id);
     return NextResponse.json(documents);
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });

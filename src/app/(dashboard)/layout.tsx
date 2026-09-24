@@ -18,7 +18,7 @@ export default async function DashboardLayout({
       <SidebarShell>
         <Sidebar />
       </SidebarShell>
-      <main className="relative flex-1 overflow-auto bg-[radial-gradient(circle_at_15%_15%,rgba(251,191,36,0.22),transparent_28%),radial-gradient(circle_at_90%_10%,rgba(251,146,60,0.20),transparent_30%),radial-gradient(circle_at_50%_100%,rgba(253,186,116,0.26),transparent_36%)]">
+      <main className="relative min-w-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_15%_15%,rgba(251,191,36,0.22),transparent_28%),radial-gradient(circle_at_90%_10%,rgba(251,146,60,0.20),transparent_30%),radial-gradient(circle_at_50%_100%,rgba(253,186,116,0.26),transparent_36%)]">
         {children}
       </main>
     </div>

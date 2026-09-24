@@ -24,6 +24,8 @@ model User {
   documents        Document[]
   preferences      UserPreference[]
   sessions         Session[]
+  readingProgress ReadingProgress[]
+  readingEntries ReadingEntry[]
 
   @@map("users")
 }
@@ -101,6 +103,8 @@ model Document {
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   sections  DocumentSection[]
   paragraphs Paragraph[]
+  readingProgress ReadingProgress[]
+  readingEntries ReadingEntry[]
 
   @@index([workspaceId])
   @@index([userId])
@@ -336,4 +340,35 @@ model AIJob {
   @@index([targetId])
   @@index([status])
   @@map("ai_jobs")
+}
+
+model ReadingProgress {
+  id String @id @default(cuid())
+  userId String
+  documentId String
+  location String
+  percentage Float @default(0)
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@unique([userId, documentId])
+  @@map("reading_progress")
+}
+model ReadingEntry {
+  id String @id @default(cuid())
+  dedupKey String? @unique
+  userId String
+  documentId String
+  kind String
+  text String
+  note String @default("")
+  location String @default("")
+  createdAt DateTime @default(now())
+  reviewAt DateTime?
+  reviewCount Int @default(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@index([userId, documentId])
+  @@index([userId, kind, reviewAt])
+  @@map("reading_entries")
 }

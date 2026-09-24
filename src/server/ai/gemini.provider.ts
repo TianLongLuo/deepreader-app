@@ -5,7 +5,7 @@ import {
   AICompletionStreamChunk,
 } from '@/types/ai';
 import { createChildLogger } from '@/lib/logger';
-import { delay } from '@/lib/utils';
+import { abortableDelay, awaitWithSignal } from '@/server/reading-assistant/cancellation';
 
 const log = createChildLogger('gemini-provider');
 
@@ -46,6 +46,7 @@ export class GeminiProvider implements AIProviderInterface {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        request.signal?.throwIfAborted();
         const response = await this.callApi(request);
         const latencyMs = Date.now() - startTime;
 
@@ -65,6 +66,7 @@ export class GeminiProvider implements AIProviderInterface {
           provider: this.providerKey,
         };
       } catch (error) {
+        request.signal?.throwIfAborted();
         lastError = error as Error;
         log.warn(
           { attempt, maxAttempts, error: (error as Error).message },
@@ -77,7 +79,7 @@ export class GeminiProvider implements AIProviderInterface {
             errorMessage.includes('429') || errorMessage.includes('503')
               ? Math.min(5000 * Math.pow(2, attempt - 1), 15000)
               : Math.min(750 * Math.pow(2, attempt - 1), 2500);
-          await delay(backoffMs);
+          await abortableDelay(backoffMs, request.signal);
           continue;
         }
 
@@ -119,7 +121,8 @@ export class GeminiProvider implements AIProviderInterface {
     const url = `${baseUrl}/models/${model}:generateContent?key=${encodeURIComponent(this.config.apiKey)}`;
     const requestedMaxOutputTokens =
       request.maxTokens ?? this.config.maxTokens;
-    const modelOutputTokenLimit = await this.getModelOutputTokenLimit();
+    request.signal?.throwIfAborted();
+    const modelOutputTokenLimit = await awaitWithSignal(this.getModelOutputTokenLimit(), request.signal);
     const maxOutputTokens = modelOutputTokenLimit
       ? Math.min(requestedMaxOutputTokens, modelOutputTokenLimit)
       : requestedMaxOutputTokens;
@@ -156,7 +159,7 @@ export class GeminiProvider implements AIProviderInterface {
               : { thinkingBudget: 0 },
           },
         }),
-        signal: controller.signal,
+        signal: request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
       });
 
       const responseText = await response.text();
@@ -214,6 +217,7 @@ export class GeminiProvider implements AIProviderInterface {
         raw: JSON.stringify(data),
       };
     } finally {
+      controller.abort();
       clearTimeout(timeout);
     }
   }
@@ -226,7 +230,8 @@ export class GeminiProvider implements AIProviderInterface {
     const url = `${baseUrl}/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.config.apiKey)}`;
     const requestedMaxOutputTokens =
       request.maxTokens ?? this.config.maxTokens;
-    const modelOutputTokenLimit = await this.getModelOutputTokenLimit();
+    request.signal?.throwIfAborted();
+    const modelOutputTokenLimit = await awaitWithSignal(this.getModelOutputTokenLimit(), request.signal);
     const maxOutputTokens = modelOutputTokenLimit
       ? Math.min(requestedMaxOutputTokens, modelOutputTokenLimit)
       : requestedMaxOutputTokens;
@@ -264,7 +269,7 @@ export class GeminiProvider implements AIProviderInterface {
               : { thinkingBudget: 0 },
           },
         }),
-        signal: controller.signal,
+        signal: request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
       });
 
       if (!response.ok) {
@@ -341,6 +346,7 @@ export class GeminiProvider implements AIProviderInterface {
         yield chunk;
       }
     } finally {
+      controller.abort();
       clearTimeout(timeout);
     }
   }
@@ -396,6 +402,7 @@ export class GeminiProvider implements AIProviderInterface {
       );
       return null;
     } finally {
+      controller.abort();
       clearTimeout(timeout);
     }
   }

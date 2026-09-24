@@ -46,7 +46,7 @@ export class DocumentService {
   /**
    * List documents for a workspace.
    */
-  async listDocuments(workspaceId: string) {
+  async listDocuments(workspaceId: string, userId?: string) {
     return prisma.document.findMany({
       where: { workspaceId, status: { not: 'DELETED' } },
       orderBy: { createdAt: 'desc' },
@@ -60,7 +60,8 @@ export class DocumentService {
         pageCount: true,
         fileSize: true,
         createdAt: true,
-        updatedAt: true
+        updatedAt: true,
+        readingProgress: { where: { userId: userId ?? '' }, select: { location: true, percentage: true, updatedAt: true } }
       }
     });
   }

@@ -94,6 +94,7 @@ import { z } from 'zod';
 export const aiProviderSettingsSchema = z.any();
 
 export type AICompletionRequest = {
+  signal?: AbortSignal;
   systemPrompt: string;
   userPrompt: string;
   maxTokens?: number;

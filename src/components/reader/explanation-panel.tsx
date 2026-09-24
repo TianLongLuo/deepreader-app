@@ -10,6 +10,8 @@ import type { ParagraphExplanationOutput } from '@/types/explanation';
 type ExplanationPanelProps = {
   documentId: string;
   text: string;
+  previousText?: string;
+  nextText?: string;
   selectionKey: string;
   onClose?: () => void;
   onActiveSentenceChange?: (selectionKey: string, index: number | null) => void;
@@ -1378,6 +1380,8 @@ function getReadableAnalysisError(error: unknown, bilingualMode: boolean) {
 export default function ExplanationPanel({
   documentId,
   text,
+  previousText,
+  nextText,
   selectionKey,
   onClose,
   onActiveSentenceChange,
@@ -1499,7 +1503,7 @@ export default function ExplanationPanel({
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setGenerating(true);
-    setData(null);
+    if (!force) setData(null);
     setError(null);
     setSectionStates(initialSectionStates);
     handleActiveSentenceChange(null);
@@ -1516,6 +1520,9 @@ export default function ExplanationPanel({
           stream: true,
           bilingualMode,
           grammarMode,
+          learningDepth,
+          previousText,
+          nextText,
           explanationLanguage: bilingualMode ? 'Chinese' : 'English',
         }),
         signal: controller.signal,
@@ -1662,6 +1669,9 @@ export default function ExplanationPanel({
     bilingualMode,
     documentId,
     grammarMode,
+    learningDepth,
+    previousText,
+    nextText,
     handleActiveSentenceChange,
     onExplanationReady,
     selectionKey,
@@ -1683,6 +1693,7 @@ export default function ExplanationPanel({
     return (
       <div className="relative flex h-full flex-col bg-gradient-to-br from-orange-50/95 via-orange-100/88 to-amber-100/85 text-orange-950 backdrop-blur-xl">
         <div className="flex flex-1 flex-col p-6 space-y-6 overflow-y-auto">
+          <button type="button" className="self-end rounded border border-orange-200 px-3 py-2 text-sm" onClick={() => { abortControllerRef.current?.abort(); setGenerating(false); }}>停止生成</button>
           <div>
             <div className="h-3 w-24 bg-orange-200/60 rounded animate-pulse mb-3" />
             <SkeletonBlock lines={3} className="rounded-2xl border border-orange-200/50 bg-white/40 p-4" />
@@ -1714,7 +1725,7 @@ export default function ExplanationPanel({
     (data.status === 'COMPLETED' || data.status === 'STREAMING');
   const hasError = error || (data && data.status === 'FAILED');
 
-  if (hasError || !hasData) {
+  if (!hasData) {
     const failureMessage =
       error?.message ||
       data?.error ||
@@ -1830,7 +1841,11 @@ export default function ExplanationPanel({
                 </span>
               </button>
            </div>
-           <div className="flex space-x-2">
+           <div className="flex items-center gap-1">
+             <select aria-label="Explanation depth" value={learningDepth} onChange={event => setLearningDepth(event.target.value as LearningDepth)} className="max-w-24 rounded border border-orange-200 bg-white px-1 py-1 text-xs text-orange-950">
+               <option value="quick">简明</option><option value="structure">结构</option><option value="grammar">语法详解</option>
+             </select>
+             {generating && <button type="button" className="text-xs" onClick={() => { abortControllerRef.current?.abort(); setGenerating(false); }}>停止</button>}
              <button onClick={() => handleGenerate(true)} className="rounded-lg p-1.5 text-orange-900/55 transition-colors hover:bg-orange-100 hover:text-orange-950" title="Regenerate">
                  <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
              </button>
@@ -1855,6 +1870,7 @@ export default function ExplanationPanel({
           </Tabs.Trigger>
         </Tabs.List>
 
+        {error && <p role="alert" className="bg-amber-50 p-3 text-xs text-amber-900">{error.message} — 已保留现有解释，可点击重试。</p>}
         {pronunciationError && (
           <div className="border-b border-red-400/20 bg-red-500/10 px-4 py-2 text-xs text-red-300">
             {pronunciationError}

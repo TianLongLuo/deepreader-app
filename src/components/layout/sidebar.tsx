@@ -29,6 +29,7 @@ export default async function Sidebar() {
           <span className="font-semibold">Upload File</span>
         </Link>
 
+        <Link href="/study" className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-orange-900/70 hover:bg-orange-100/80"><Book className="h-5 w-5" />Notes & vocabulary</Link>
         {aiAccess.canManageOwnAiSettings ? (
           <div className="mt-6 border-t border-orange-200/70 pt-6">
             <p className="mb-2 px-4 text-xs font-bold uppercase tracking-wider text-orange-900/45">Configuration</p>
