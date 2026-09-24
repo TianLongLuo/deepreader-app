@@ -82,6 +82,8 @@ export default function ReadingTools({
     readingLevel,
     setReadingLevel,
     explanationLanguage,
+    sourceLanguage,
+    setSourceLanguage,
   } = useReaderStore();
   const [tab, setTab] = useState("ai");
   const [query, setQuery] = useState("");
@@ -120,10 +122,10 @@ export default function ReadingTools({
     setResponses({});
     if (selection) {
       setTab(
-        /^[\p{L}'’-]+$/u.test(selection.text.trim()) ? "dictionary" : "ai",
+        /^[\p{L}\p{M}'’-]+$/u.test(selection.text.trim()) ? "dictionary" : "ai",
       );
       setWord(
-        /^[\p{L}'’-]+$/u.test(selection.text.trim())
+        /^[\p{L}\p{M}'’-]+$/u.test(selection.text.trim())
           ? selection.text.trim()
           : "",
       );
@@ -175,6 +177,7 @@ export default function ReadingTools({
             .map((h) => ({ ...h, content: h.content.slice(0, 6000) })),
           level: readingLevel,
           language: explanationLanguage,
+          sourceLanguage,
         }),
       });
       if (signal.aborted) return;
@@ -229,6 +232,14 @@ export default function ReadingTools({
               关闭
             </button>
           </div>
+          <label className="flex items-center justify-between gap-3 border-b border-orange-200 px-4 py-3 text-sm">
+            学习语言
+            <select aria-label="学习语言" className="rounded-lg border border-orange-200 bg-white px-3 py-2" value={sourceLanguage} onChange={event=>{
+              controller.current?.abort();setBusy(false);lastAction.current=null;
+              setDictionary(null);setWordAnswer(null);setAnswer(null);setHistory([]);setError("");setStatus("");setRevealed([]);setResponses({});
+              setSourceLanguage(event.target.value as "en"|"es");
+            }}><option value="en">英语 · English</option><option value="es">西班牙语 · Español</option></select>
+          </label>
           <nav className="flex flex-wrap gap-1 border-b border-orange-200 p-3">
             {[
               ["ai", "AI 阅读"],
@@ -408,7 +419,7 @@ export default function ReadingTools({
                         void save(
                           "chat",
                           selection?.text || "",
-                          JSON.stringify({ answer, history }),
+                          JSON.stringify({ answer, history, sourceLanguage }),
                         )
                       }
                     >
@@ -453,13 +464,15 @@ export default function ReadingTools({
             )}
             {tab === "dictionary" && (
               <>
+                {sourceLanguage === "es" && <p className="rounded-xl bg-orange-100 p-3 text-sm">西班牙语使用 AI 语境释义。请点击「AI 语境释义」，结合原文解释单词、变位和用法；AI 内容会单独标明。</p>}
                 <form
                   className="flex gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
+                    if (sourceLanguage === "es") return;
                     void perform(async (signal) => {
                       const data = await readingRequest(
-                        `/api/dictionary?word=${encodeURIComponent(word.trim())}`,
+                        `/api/dictionary?word=${encodeURIComponent(word.trim().normalize("NFC"))}&language=${sourceLanguage}`,
                         { signal },
                       );
                       if (!signal.aborted) setDictionary(data);
@@ -480,11 +493,9 @@ export default function ReadingTools({
                       setStatus("");
                       lastAction.current = null;
                     }}
-                    placeholder="输入英文单词"
+                    placeholder={sourceLanguage === "es" ? "输入西班牙语单词，如 corazón" : "输入英文单词"}
                   />
-                  <button className={button} disabled={!word.trim() || busy}>
-                    查词
-                  </button>
+                  {sourceLanguage === "en" && <button className={button} disabled={!word.trim() || busy}>查词</button>}
                 </form>
                 {dictionary && (
                   <div className="space-y-3 rounded-xl bg-white p-4">
@@ -494,7 +505,7 @@ export default function ReadingTools({
                         {dictionary.phonetic}
                       </span>
                     </h3>
-                    <p className="text-xs text-orange-700">词典 · 英文释义</p>
+                    <p className="text-xs text-orange-700">词典 · {sourceLanguage === "es" ? "西班牙语" : "英语"}释义</p>
                     {dictionary.audioUrl ? (
                       <audio
                         controls
@@ -514,7 +525,7 @@ export default function ReadingTools({
                           const u = new SpeechSynthesisUtterance(
                             dictionary.word,
                           );
-                          u.lang = "en-US";
+                          u.lang = sourceLanguage === "es" ? "es-ES" : "en-US";
                           speechSynthesis.speak(u);
                         }}
                       >
@@ -573,6 +584,7 @@ export default function ReadingTools({
                             nextText: selection?.nextText?.slice(0, 6000),
                             level: readingLevel,
                             language: explanationLanguage,
+          sourceLanguage,
                           }),
                         },
                       );
@@ -595,8 +607,7 @@ export default function ReadingTools({
                 )}
                 {!dictionary && (
                   <p className="text-xs text-orange-800">
-                    词典释义暂缺。仍可保存单词与原句，稍后补查；AI
-                    释义会单独标明。
+                    {sourceLanguage === "es" ? "可直接保存西班牙语单词与原句，并通过 AI 语境释义补充含义和用法。" : "词典释义暂缺。仍可保存单词与原句，稍后补查；AI 释义会单独标明。"}
                   </p>
                 )}
                 <button
@@ -623,6 +634,7 @@ export default function ReadingTools({
                             ? wordAnswer.answer.answer
                             : undefined,
                         dictionaryAvailable: Boolean(dictionary),
+                        sourceLanguage,
                       }),
                     )
                   }
@@ -749,6 +761,7 @@ export default function ReadingTools({
                           onClick={() => {
                             try {
                               const saved = JSON.parse(item.note || "{}");
+                              setSourceLanguage(saved.sourceLanguage === "es" ? "es" : "en");
                               onRestoreSelection({
                                 text: item.text,
                                 location: item.location || "",

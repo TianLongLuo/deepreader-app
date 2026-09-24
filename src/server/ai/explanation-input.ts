@@ -1,5 +1,6 @@
 import { z } from "zod";
 export const explanationOptions = z.object({
+  sourceLanguage: z.enum(["en", "es"]).default("en"),
   forceRegenerate: z.boolean().default(false),
   bilingualMode: z.boolean().default(false),
   grammarMode: z.boolean().default(true),

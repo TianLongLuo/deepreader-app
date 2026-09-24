@@ -6,7 +6,7 @@ import {
 } from '@/server/app-config/app-config.service';
 
 function parseGlobalAIProvider(value: unknown): GlobalAIProviderKey | undefined {
-  return value === 'deepseek' || value === 'gemini' ? value : undefined;
+  return value === 'deepseek' || value === 'gemini' || value === 'mimo' ? value : undefined;
 }
 
 export async function GET() {
@@ -32,6 +32,10 @@ export async function POST(req: Request) {
       globalGeminiApiKey?: unknown;
       clearGlobalGeminiApiKey?: unknown;
       globalGeminiModel?: unknown;
+      globalMimoApiKey?: unknown;
+      clearGlobalMimoApiKey?: unknown;
+      globalMimoModel?: unknown;
+      globalMimoBaseUrl?: unknown;
     };
     const nextConfig = await appConfigService.updateConfig({
       allowRegistrations:
@@ -39,6 +43,10 @@ export async function POST(req: Request) {
           ? body.allowRegistrations
           : undefined,
       globalAiProvider: parseGlobalAIProvider(body.globalAiProvider),
+      globalMimoApiKey: typeof body.globalMimoApiKey === 'string' ? body.globalMimoApiKey : undefined,
+      clearGlobalMimoApiKey: typeof body.clearGlobalMimoApiKey === 'boolean' ? body.clearGlobalMimoApiKey : undefined,
+      globalMimoModel: typeof body.globalMimoModel === 'string' ? body.globalMimoModel : undefined,
+      globalMimoBaseUrl: typeof body.globalMimoBaseUrl === 'string' ? body.globalMimoBaseUrl : undefined,
       shareGlobalDeepSeekWithUsers:
         typeof body.shareGlobalDeepSeekWithUsers === 'boolean'
           ? body.shareGlobalDeepSeekWithUsers

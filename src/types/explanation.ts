@@ -110,7 +110,10 @@ export type SentenceLearningFocus = z.infer<typeof SentenceLearningFocusSchema>;
 export type SentenceBreakdown = z.infer<typeof SentenceBreakdownSchema>;
 export type ParagraphExplanation = z.infer<typeof ParagraphExplanationSchema>;
 
+export type SourceLanguage = 'en' | 'es';
+
 export type ParagraphExplanationInput = {
+  sourceLanguage?: SourceLanguage;
   paragraphId: string;
   currentParagraph: string;
   previousParagraph?: string | null;
@@ -139,6 +142,7 @@ export type ParagraphExplanationServiceResult = {
 export type ParagraphExplanationOutput = ParagraphExplanation;
 
 export type ExplanationRequest = {
+  sourceLanguage?: SourceLanguage;
   paragraphId: string;
   previousText?: string;
   nextText?: string;

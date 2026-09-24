@@ -24,6 +24,8 @@ export function readableNote(kind: string, note: string): string {
   }
   if (!data) return note;
   const parts: string[] = [];
+  if (data.sourceLanguage === "es") parts.push("Learning language: Español");
+  else if (data.sourceLanguage === "en") parts.push("Learning language: English");
   if (kind === "word") {
     if (string(data.phonetic))
       parts.push(`Pronunciation: ${string(data.phonetic)}`);
@@ -88,4 +90,10 @@ export function readableNote(kind: string, note: string): string {
   return parts.length
     ? parts.join("\n\n")
     : "This saved item has no readable explanation.";
+}
+
+/** Legacy saved words default to English; unknown future language codes are not accepted. */
+export function savedSourceLanguage(note: string): "en" | "es" {
+  try { return record(JSON.parse(note))?.sourceLanguage === "es" ? "es" : "en"; }
+  catch { return "en"; }
 }

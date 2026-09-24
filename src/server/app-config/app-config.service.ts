@@ -6,6 +6,8 @@ import {
   DEFAULT_DEEPSEEK_MODEL,
 } from '@/server/ai/deepseek-config';
 
+import { DEFAULT_MIMO_BASE_URL, DEFAULT_MIMO_MODEL, validateMimoBaseUrl } from '@/server/ai/mimo-config';
+
 export const PRIMARY_ADMIN_EMAIL = 'admin@qq.com';
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
@@ -13,9 +15,13 @@ const BUILT_IN_DEEPSEEK_API_KEY_ENCRYPTED =
   '18NETnVN5LT/smZ51iCYgtA9lZ8Sja0Uy8R+wq9NfKKO67K9I/tKF/50+JpLr6VY1DLEfjzL3eYYuA3IHrCDlMr0sg==';
 const BUILT_IN_DEEPSEEK_API_KEY_PREVIEW = 'sk-****c077';
 
-export type GlobalAIProviderKey = 'deepseek' | 'gemini';
+export type GlobalAIProviderKey = 'deepseek' | 'gemini' | 'mimo';
 
 type StoredAppConfig = {
+  globalMimoApiKeyEncrypted: string | null;
+  globalMimoApiKeyPreview: string | null;
+  globalMimoModel: string;
+  globalMimoBaseUrl: string;
   allowRegistrations: boolean;
   globalAiProvider: GlobalAIProviderKey;
   shareGlobalDeepSeekWithUsers: boolean;
@@ -30,6 +36,10 @@ type StoredAppConfig = {
 export type PublicAppConfig = Pick<StoredAppConfig, 'allowRegistrations'>;
 
 export type AdminAppConfig = {
+  hasGlobalMimoApiKey: boolean;
+  globalMimoApiKeyPreview: string | null;
+  globalMimoModel: string;
+  globalMimoBaseUrl: string;
   allowRegistrations: boolean;
   globalAiProvider: GlobalAIProviderKey;
   shareGlobalDeepSeekWithUsers: boolean;
@@ -49,6 +59,10 @@ export type UserAIAccess = {
 };
 
 const DEFAULT_CONFIG: StoredAppConfig = {
+  globalMimoApiKeyEncrypted: null,
+  globalMimoApiKeyPreview: null,
+  globalMimoModel: DEFAULT_MIMO_MODEL,
+  globalMimoBaseUrl: DEFAULT_MIMO_BASE_URL,
   allowRegistrations: true,
   globalAiProvider: 'deepseek',
   shareGlobalDeepSeekWithUsers: true,
@@ -83,11 +97,15 @@ async function ensureConfigFile() {
 
 export class AppConfigService {
   private normalizeProvider(value: unknown): GlobalAIProviderKey {
-    return value === 'gemini' ? 'gemini' : 'deepseek';
+    return value === 'mimo' ? 'mimo' : value === 'gemini' ? 'gemini' : 'deepseek';
   }
 
   private normalizeConfig(parsed: Partial<StoredAppConfig>): StoredAppConfig {
     return {
+      globalMimoApiKeyEncrypted: parsed.globalMimoApiKeyEncrypted || null,
+      globalMimoApiKeyPreview: parsed.globalMimoApiKeyPreview || null,
+      globalMimoModel: parsed.globalMimoModel?.trim() || DEFAULT_MIMO_MODEL,
+      globalMimoBaseUrl: parsed.globalMimoBaseUrl || DEFAULT_MIMO_BASE_URL,
       allowRegistrations:
         typeof parsed.allowRegistrations === 'boolean'
           ? parsed.allowRegistrations
@@ -155,6 +173,10 @@ export class AppConfigService {
   async getAdminConfig(): Promise<AdminAppConfig> {
     const config = await this.getConfig();
     return {
+      hasGlobalMimoApiKey: Boolean(config.globalMimoApiKeyEncrypted),
+      globalMimoApiKeyPreview: config.globalMimoApiKeyPreview,
+      globalMimoModel: config.globalMimoModel,
+      globalMimoBaseUrl: config.globalMimoBaseUrl,
       allowRegistrations: config.allowRegistrations,
       globalAiProvider: config.globalAiProvider,
       shareGlobalDeepSeekWithUsers: config.shareGlobalDeepSeekWithUsers,
@@ -171,7 +193,7 @@ export class AppConfigService {
     const config = await this.getConfig();
     const isPrimaryAdmin = this.isPrimaryAdminEmail(email);
     const selectedProviderHasKey =
-      config.globalAiProvider === 'gemini'
+      config.globalAiProvider === 'mimo' ? Boolean(config.globalMimoApiKeyEncrypted) : config.globalAiProvider === 'gemini'
         ? Boolean(config.globalGeminiApiKeyEncrypted)
         : Boolean(config.globalDeepseekApiKeyEncrypted);
 
@@ -182,7 +204,7 @@ export class AppConfigService {
         selectedProviderHasKey &&
         (isPrimaryAdmin || config.shareGlobalDeepSeekWithUsers),
       hasGlobalDeepseekApiKey:
-        config.globalAiProvider === 'gemini'
+        config.globalAiProvider === 'mimo' ? Boolean(config.globalMimoApiKeyEncrypted) : config.globalAiProvider === 'gemini'
           ? Boolean(config.globalGeminiApiKeyEncrypted)
           : Boolean(config.globalDeepseekApiKeyEncrypted),
     };
@@ -198,6 +220,10 @@ export class AppConfigService {
     globalGeminiApiKey?: string;
     clearGlobalGeminiApiKey?: boolean;
     globalGeminiModel?: string;
+    globalMimoApiKey?: string;
+    clearGlobalMimoApiKey?: boolean;
+    globalMimoModel?: string;
+    globalMimoBaseUrl?: string;
   }): Promise<AdminAppConfig> {
     const current = await this.getConfig();
     const nextConfig: StoredAppConfig = {
@@ -252,9 +278,26 @@ export class AppConfigService {
       nextConfig.globalGeminiModel = input.globalGeminiModel.trim();
     }
 
+    if (input.globalMimoBaseUrl !== undefined) nextConfig.globalMimoBaseUrl = validateMimoBaseUrl(input.globalMimoBaseUrl);
+    if (input.globalMimoModel !== undefined) {
+      const model = input.globalMimoModel.trim();
+      if (!model || model.length > 120) throw new Error('MiMo model is required (maximum 120 characters)');
+      nextConfig.globalMimoModel = model;
+    }
+    if (input.clearGlobalMimoApiKey) {
+      nextConfig.globalMimoApiKeyEncrypted = null;
+      nextConfig.globalMimoApiKeyPreview = null;
+    } else if (input.globalMimoApiKey?.trim()) {
+      nextConfig.globalMimoApiKeyEncrypted = encrypt(input.globalMimoApiKey.trim());
+      nextConfig.globalMimoApiKeyPreview = maskApiKey(input.globalMimoApiKey.trim());
+    }
     const configPath = await ensureConfigFile();
     await fs.writeFile(configPath, JSON.stringify(nextConfig, null, 2), 'utf8');
     return {
+      hasGlobalMimoApiKey: Boolean(nextConfig.globalMimoApiKeyEncrypted),
+      globalMimoApiKeyPreview: nextConfig.globalMimoApiKeyPreview,
+      globalMimoModel: nextConfig.globalMimoModel,
+      globalMimoBaseUrl: nextConfig.globalMimoBaseUrl,
       allowRegistrations: nextConfig.allowRegistrations,
       globalAiProvider: nextConfig.globalAiProvider,
       shareGlobalDeepSeekWithUsers: nextConfig.shareGlobalDeepSeekWithUsers,
@@ -275,6 +318,10 @@ export class AppConfigService {
   } | null> {
     const config = await this.getConfig();
 
+    if (config.globalAiProvider === 'mimo') {
+      if (!config.globalMimoApiKeyEncrypted) return null;
+      return {providerKey:'mimo', apiKey:decrypt(config.globalMimoApiKeyEncrypted), baseUrl:validateMimoBaseUrl(config.globalMimoBaseUrl), model:config.globalMimoModel};
+    }
     if (config.globalAiProvider === 'gemini') {
       if (!config.globalGeminiApiKeyEncrypted) {
         return null;

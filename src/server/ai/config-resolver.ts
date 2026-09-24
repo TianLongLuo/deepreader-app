@@ -4,6 +4,8 @@ import { createChildLogger } from '@/lib/logger';
 import { AIProviderInterface } from '@/types/ai';
 import { DeepSeekProvider } from './deepseek.provider';
 import { GeminiProvider } from './gemini.provider';
+import { MimoProvider } from './mimo.provider';
+import { DEFAULT_MIMO_MODEL, DEFAULT_MIMO_BASE_URL } from './mimo-config';
 import {
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
@@ -46,6 +48,12 @@ const GLOBAL_GEMINI_DEFAULTS = {
   saveRawResponse: false,
   saveRequestInput: false,
   cacheEnabled: true,
+} as const;
+
+const GLOBAL_MIMO_DEFAULTS = {
+  ...GLOBAL_DEEPSEEK_DEFAULTS,
+  providerKey: 'mimo', baseUrl: DEFAULT_MIMO_BASE_URL, model: DEFAULT_MIMO_MODEL,
+  maxTokens: 8192, timeoutMs: 180000, retryCount: 2,
 } as const;
 
 export interface ResolvedAIConfig {
@@ -139,9 +147,11 @@ export class AIConfigResolver {
       ? workspaceConfig
       : null;
     const selectedProviderHasGlobalKey =
-      appConfig.globalAiProvider === 'gemini'
-        ? Boolean(appConfig.globalGeminiApiKeyEncrypted)
-        : Boolean(appConfig.globalDeepseekApiKeyEncrypted);
+      appConfig.globalAiProvider === 'mimo'
+        ? Boolean(appConfig.globalMimoApiKeyEncrypted)
+        : appConfig.globalAiProvider === 'gemini'
+          ? Boolean(appConfig.globalGeminiApiKeyEncrypted)
+          : Boolean(appConfig.globalDeepseekApiKeyEncrypted);
     const canUseGlobalConfig =
       selectedProviderHasGlobalKey &&
       (aiAccess.isPrimaryAdmin || appConfig.shareGlobalDeepSeekWithUsers);
@@ -161,9 +171,11 @@ export class AIConfigResolver {
       }
 
       const defaults =
-        globalConfig.providerKey === 'gemini'
-          ? GLOBAL_GEMINI_DEFAULTS
-          : GLOBAL_DEEPSEEK_DEFAULTS;
+        globalConfig.providerKey === 'mimo'
+          ? GLOBAL_MIMO_DEFAULTS
+          : globalConfig.providerKey === 'gemini'
+            ? GLOBAL_GEMINI_DEFAULTS
+            : GLOBAL_DEEPSEEK_DEFAULTS;
 
       providerKey = globalConfig.providerKey;
       model =
@@ -249,9 +261,11 @@ export class AIConfigResolver {
       }
 
       const defaults =
-        globalConfig.providerKey === 'gemini'
-          ? GLOBAL_GEMINI_DEFAULTS
-          : GLOBAL_DEEPSEEK_DEFAULTS;
+        globalConfig.providerKey === 'mimo'
+          ? GLOBAL_MIMO_DEFAULTS
+          : globalConfig.providerKey === 'gemini'
+            ? GLOBAL_GEMINI_DEFAULTS
+            : GLOBAL_DEEPSEEK_DEFAULTS;
 
       providerKey = globalConfig.providerKey;
       model =
@@ -346,6 +360,8 @@ export class AIConfigResolver {
         return new DeepSeekProvider(config);
       case 'gemini':
         return new GeminiProvider(config);
+      case 'mimo':
+        return new MimoProvider(config);
       default:
         throw new Error(`Unsupported AI provider: ${providerKey}`);
     }

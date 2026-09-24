@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 type ConsoleSnapshot = {
   adminConfig: {
     allowRegistrations: boolean;
-    globalAiProvider: 'deepseek' | 'gemini';
+    globalAiProvider: 'deepseek' | 'gemini' | 'mimo';
     shareGlobalDeepSeekWithUsers: boolean;
     allowUserAiSettings: boolean;
     hasGlobalDeepseekApiKey: boolean;
@@ -15,6 +15,10 @@ type ConsoleSnapshot = {
     hasGlobalGeminiApiKey: boolean;
     globalGeminiApiKeyPreview: string | null;
     globalGeminiModel: string;
+    hasGlobalMimoApiKey: boolean;
+    globalMimoApiKeyPreview: string | null;
+    globalMimoModel: string;
+    globalMimoBaseUrl: string;
   };
   totals: {
     registeredUsers: number;
@@ -61,13 +65,18 @@ export default function DracConsolePanel({
   const [globalGeminiModelDraft, setGlobalGeminiModelDraft] = useState(
     initialSnapshot.adminConfig.globalGeminiModel
   );
+  const [mimoKey, setMimoKey] = useState('');
+  const [mimoModel, setMimoModel] = useState(initialSnapshot.adminConfig.globalMimoModel);
+  const [mimoBaseUrl, setMimoBaseUrl] = useState(initialSnapshot.adminConfig.globalMimoBaseUrl);
+  const [mimoTest, setMimoTest] = useState('');
+  const [isTestingMimo, setIsTestingMimo] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState('');
 
   const handleConfigUpdate = (
     update: {
       allowRegistrations?: boolean;
-      globalAiProvider?: 'deepseek' | 'gemini';
+      globalAiProvider?: 'deepseek' | 'gemini' | 'mimo';
       shareGlobalDeepSeekWithUsers?: boolean;
       allowUserAiSettings?: boolean;
       globalDeepseekApiKey?: string;
@@ -75,6 +84,10 @@ export default function DracConsolePanel({
       globalGeminiApiKey?: string;
       clearGlobalGeminiApiKey?: boolean;
       globalGeminiModel?: string;
+      globalMimoApiKey?: string;
+      clearGlobalMimoApiKey?: boolean;
+      globalMimoModel?: string;
+      globalMimoBaseUrl?: string;
     },
     fallbackError: string,
     afterSuccess?: () => void
@@ -83,6 +96,7 @@ export default function DracConsolePanel({
 
     startTransition(() => {
       void (async () => {
+        try {
         const response = await fetch('/api/dracconsole/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -103,6 +117,7 @@ export default function DracConsolePanel({
           adminConfig: payload,
         }));
         afterSuccess?.();
+        } catch { setError(fallbackError); }
       })();
     });
   };
@@ -195,7 +210,7 @@ export default function DracConsolePanel({
         />
         <StatCard
           label="Active AI"
-          value={snapshot.adminConfig.globalAiProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}
+          value={snapshot.adminConfig.globalAiProvider === 'mimo' ? 'MiMo' : snapshot.adminConfig.globalAiProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}
         />
         <StatCard
           label="User AI Settings"
@@ -260,7 +275,7 @@ export default function DracConsolePanel({
                     {
                       globalAiProvider: event.target.value as
                         | 'deepseek'
-                        | 'gemini',
+                        | 'gemini' | 'mimo',
                     },
                     'Failed to update active shared AI provider'
                   )
@@ -268,6 +283,7 @@ export default function DracConsolePanel({
                 disabled={isPending}
                 className="h-11 w-full rounded-2xl border border-orange-200 bg-orange-50/70 px-4 text-sm text-orange-950"
               >
+                <option value="mimo">MiMo / Token Plan</option>
                 <option value="deepseek">DeepSeek Chat</option>
                   <option value="gemini">Gemini 3 Flash</option>
               </select>
@@ -304,6 +320,30 @@ export default function DracConsolePanel({
                   ? 'Disable Shared AI'
                   : 'Enable Shared AI'}
               </Button>
+            </div>
+
+            <div className="space-y-3 border-t border-orange-200/70 pt-4">
+              <label htmlFor="mimo-endpoint" className="text-sm font-semibold">MiMo 接入方式</label>
+              <select id="mimo-endpoint" value={mimoBaseUrl} onChange={e=>setMimoBaseUrl(e.target.value)} disabled={isPending} className="h-11 w-full rounded-2xl border border-orange-200 px-3">
+                <option value="https://api.xiaomimimo.com/v1">按量付费 API</option>
+                <option value="https://token-plan-cn.xiaomimimo.com/v1">Token Plan · 中国</option>
+                <option value="https://token-plan-sgp.xiaomimimo.com/v1">Token Plan · 新加坡</option>
+                <option value="https://token-plan-ams.xiaomimimo.com/v1">Token Plan · 欧洲</option>
+              </select>
+              <label htmlFor="mimo-model" className="text-sm font-semibold">MiMo 模型名称</label>
+              <Input id="mimo-model" value={mimoModel} onChange={e=>setMimoModel(e.target.value)} placeholder="mimo-v2.6-pro" disabled={isPending} />
+              <label htmlFor="mimo-key" className="text-sm font-semibold">MiMo API Key</label>
+              <Input id="mimo-key" type="password" autoComplete="off" value={mimoKey} onChange={e=>setMimoKey(e.target.value)} placeholder={snapshot.adminConfig.globalMimoApiKeyPreview || 'sk-… / tp-… / ttp-…'} disabled={isPending} />
+              <p className="text-xs text-orange-900/60">模型名和地区以 MiMo 控制台为准。Token Plan 使用专属密钥，与按量付费密钥不可混用。留空保留已保存密钥。</p>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={isPending || !mimoModel.trim()} onClick={()=>handleConfigUpdate({globalMimoApiKey:mimoKey || undefined,globalMimoModel:mimoModel,globalMimoBaseUrl:mimoBaseUrl},'保存 MiMo 配置失败',()=>{setMimoKey('');setMimoTest('');})}>保存 MiMo 配置</Button>
+                <Button variant="outline" disabled={isPending || !snapshot.adminConfig.hasGlobalMimoApiKey} onClick={()=>handleConfigUpdate({clearGlobalMimoApiKey:true},'清除 MiMo 密钥失败',()=>setMimoKey(''))}>清除密钥</Button>
+                <Button variant="outline" disabled={isTestingMimo || isPending || !snapshot.adminConfig.hasGlobalMimoApiKey} onClick={async()=>{
+                  setIsTestingMimo(true);setMimoTest('');
+                  try {const response=await fetch('/api/dracconsole/config/test',{method:'POST'});const result=await response.json();setMimoTest(result.message || result.error || '测试失败');}catch{setMimoTest('网络错误，请重试');}finally{setIsTestingMimo(false);}
+                }}>{isTestingMimo?'测试中…':'测试已保存的 MiMo 配置'}</Button>
+              </div>
+              {mimoTest && <p role="status" className="text-sm">{mimoTest}</p>}
             </div>
 
             <div className="space-y-2 border-t border-orange-200/70 pt-4">

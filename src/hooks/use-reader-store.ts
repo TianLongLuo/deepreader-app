@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 type ReaderState = {
+  sourceLanguage: 'en' | 'es';
+  setSourceLanguage: (sourceLanguage: 'en' | 'es') => void;
   fontSize: number;
   lineHeight: number;
   setTypography: (fontSize: number, lineHeight: number) => void;
@@ -30,6 +32,8 @@ type ReaderState = {
 export const useReaderStore = create<ReaderState>()(
   persist(
     (set) => ({
+      sourceLanguage: 'en',
+      setSourceLanguage: (sourceLanguage) => set({ sourceLanguage }),
       fontSize: 18,
       lineHeight: 1.8,
       setTypography: (fontSize, lineHeight) => set({fontSize, lineHeight}),

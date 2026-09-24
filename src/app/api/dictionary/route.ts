@@ -9,6 +9,9 @@ import {
 export async function GET(req: Request) {
   try {
     await requireAuth();
+    const language = new URL(req.url).searchParams.get("language") || "en";
+    if (language !== "en" && language !== "es") return NextResponse.json({error:"Unsupported source language"}, {status:400});
+    if (language === "es") return NextResponse.json({error:"西班牙语暂不提供通用词典查询，请使用 AI 语境释义。",code:"DICTIONARY_LANGUAGE_UNSUPPORTED",aiAvailable:true,sourceLanguage:"es"}, {status:422});
     const word = dictionaryWordSchema.safeParse(
       new URL(req.url).searchParams.get("word"),
     );

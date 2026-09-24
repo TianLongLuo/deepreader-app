@@ -87,7 +87,9 @@ const cache = new Map<string, { value: DictionaryEntry; expires: number }>();
 export async function lookupDictionary(
   rawWord: string,
   signal?: AbortSignal,
+  sourceLanguage: "en" | "es" = "en",
 ): Promise<DictionaryEntry> {
+  if (sourceLanguage === "es") throw new DictionaryError("西班牙语暂不提供通用词典查询，请使用 AI 语境释义。", 422);
   const word = dictionaryWordSchema.parse(rawWord);
   signal?.throwIfAborted();
   for (const [key, item] of cache)

@@ -1394,6 +1394,7 @@ export default function ExplanationPanel({
     setBilingualMode,
     learningDepth,
     setLearningDepth,
+    sourceLanguage,
   } = useReaderStore();
   const [generating, setGenerating] = useState(false);
   const [data, setData] = useState<ExplanationData | null>(null);
@@ -1521,6 +1522,7 @@ export default function ExplanationPanel({
           bilingualMode,
           grammarMode,
           learningDepth,
+          sourceLanguage,
           previousText,
           nextText,
           explanationLanguage: bilingualMode ? 'Chinese' : 'English',
@@ -1670,6 +1672,7 @@ export default function ExplanationPanel({
     documentId,
     grammarMode,
     learningDepth,
+    sourceLanguage,
     previousText,
     nextText,
     handleActiveSentenceChange,

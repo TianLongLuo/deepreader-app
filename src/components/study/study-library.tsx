@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { csvCell } from "./export";
-import { readableNote } from "./readable-note";
+import { readableNote, savedSourceLanguage } from "./readable-note";
 type Entry = {
   id: string;
   kind: string;
@@ -16,6 +16,7 @@ type Entry = {
 };
 export default function StudyLibrary() {
   const [items, setItems] = useState<Entry[]>([]);
+  const [languageFilter, setLanguageFilter] = useState("all");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -44,6 +45,7 @@ export default function StudyLibrary() {
   }, []);
   const visible = items.filter(
     (i) =>
+      (languageFilter === "all" || ((i.kind === "word" || i.kind === "chat") && savedSourceLanguage(i.note) === languageFilter)) &&
       (filter === "all" || filter === "due"
         ? filter !== "due" ||
           (i.kind === "word" &&
@@ -140,6 +142,9 @@ export default function StudyLibrary() {
           onChange={(e) => setQuery(e.target.value)}
           className="min-w-48 flex-1 rounded-xl border p-3"
         />
+        <select aria-label="Filter learning language" value={languageFilter} onChange={event=>{setLanguageFilter(event.target.value);setRevealed([]);}} className="rounded-xl border p-3">
+          <option value="all">All languages</option><option value="en">English</option><option value="es">Español</option>
+        </select>
         <select
           aria-label="Filter saved items"
           value={filter}
@@ -196,7 +201,7 @@ export default function StudyLibrary() {
         >
           <div className="flex justify-between gap-3 text-sm">
             <span>
-              {item.document.title} · {item.kind}
+              {item.document.title} · {item.kind}{(item.kind === "word" || item.kind === "chat") ? ` · ${savedSourceLanguage(item.note) === "es" ? "Español" : "English"}` : ""}
             </span>
             <button
               disabled={busy === item.id}
