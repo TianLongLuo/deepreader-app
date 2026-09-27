@@ -8,3 +8,12 @@ node_modules/
 storage/uploads/
 storage/tts/
 *.mp3
+
+.env*
+!.env.example
+*.db-*
+storage/
+logs/
+app.pid
+.superpowers/
+.playwright-cli/

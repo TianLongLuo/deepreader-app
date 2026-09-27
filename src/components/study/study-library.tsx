@@ -27,7 +27,7 @@ export default function StudyLibrary() {
     let active = true;
     fetch("/api/study")
       .then(async (r) => {
-        if (!r.ok) throw new Error("Unable to load your learning library.");
+        if (!r.ok) throw new Error("学习记录加载失败，请刷新重试。");
         return r.json();
       })
       .then((d) => {
@@ -56,7 +56,7 @@ export default function StudyLibrary() {
         .includes(query.toLowerCase()),
   );
   async function mutate(item: Entry, rating?: "again" | "good") {
-    if (!rating && !window.confirm("Delete this saved item?")) return;
+    if (!rating && !window.confirm("删除这条学习记录？")) return;
     setBusy(item.id);
     setError("");
     try {
@@ -76,7 +76,7 @@ export default function StudyLibrary() {
       );
       const payload = await response.json();
       if (!response.ok)
-        throw new Error(payload.error || "Unable to update item");
+        throw new Error(payload.error || "更新失败，请重试。");
       setItems((list) =>
         rating
           ? list.map((i) => (i.id === item.id ? { ...i, ...payload.item } : i))
@@ -126,27 +126,27 @@ export default function StudyLibrary() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6 text-orange-950">
+    <div className="mx-auto max-w-5xl space-y-6 p-6 text-foreground">
       <div>
-        <p className="text-sm text-orange-700">YOUR READING COMPANION</p>
-        <h1 className="text-3xl font-bold">Notes & vocabulary</h1>
-        <p className="mt-2 text-orange-900/60">
-          Keep ideas, revisit words, and return to their original context.
+        <p className="text-sm text-primary">温故而知新</p>
+        <h1 className="text-3xl font-bold">学习</h1>
+        <p className="mt-2 text-foreground">
+          记录想法，复习生词，回到最初遇见它的那句话。
         </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <input
-          aria-label="Search saved items"
-          placeholder="Search words, notes, books…"
+          aria-label="搜索学习记录"
+          placeholder="搜索单词、笔记或书籍…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="min-w-48 flex-1 rounded-xl border p-3"
         />
-        <select aria-label="Filter learning language" value={languageFilter} onChange={event=>{setLanguageFilter(event.target.value);setRevealed([]);}} className="rounded-xl border p-3">
-          <option value="all">All languages</option><option value="en">English</option><option value="es">Español</option>
+        <select aria-label="筛选原文语言" value={languageFilter} onChange={event=>{setLanguageFilter(event.target.value);setRevealed([]);}} className="rounded-xl border p-3">
+          <option value="all">所有语言</option><option value="en">English</option><option value="es">Español</option>
         </select>
         <select
-          aria-label="Filter saved items"
+          aria-label="筛选记录类型"
           value={filter}
           onChange={(e) => {
             setFilter(e.target.value);
@@ -154,26 +154,26 @@ export default function StudyLibrary() {
           }}
           className="rounded-xl border p-3"
         >
-          <option value="all">All saved items</option>
-          <option value="note">Notes</option>
-          <option value="word">Vocabulary</option>
-          <option value="bookmark">Bookmarks</option>
-          <option value="chat">AI conversations</option>
-          <option value="due">Words due for review</option>
+          <option value="all">全部记录</option>
+          <option value="note">笔记</option>
+          <option value="word">生词</option>
+          <option value="bookmark">书签</option>
+          <option value="chat">AI 对话</option>
+          <option value="due">待复习生词</option>
         </select>
         <button
           disabled={!visible.length}
           onClick={() => download("md")}
           className="rounded-xl border p-3 disabled:opacity-40"
         >
-          Export Markdown
+          导出 Markdown
         </button>
         <button
           disabled={!visible.length}
           onClick={() => download("csv")}
           className="rounded-xl border p-3 disabled:opacity-40"
         >
-          Export CSV
+          导出 CSV
         </button>
       </div>
       {error && (
@@ -182,22 +182,22 @@ export default function StudyLibrary() {
         </p>
       )}
       {loading ? (
-        <p>Loading saved items…</p>
+        <p>正在加载学习记录…</p>
       ) : !visible.length ? (
         <p className="rounded-2xl border border-dashed p-10 text-center">
           {filter === "due"
-            ? "All caught up. Words will appear here when their next review is due."
-            : "No matching items. Save a word, bookmark, or note while reading."}
+            ? "今天的复习已完成。下次到期的生词会显示在这里。"
+            : "没有匹配的记录。阅读时可以收藏生词、添加书签或笔记。"}
         </p>
       ) : (
-        <p className="text-sm text-orange-800/60">
-          {visible.length} saved items
+        <p className="text-sm text-muted-foreground">
+          {visible.length} 条记录
         </p>
       )}
       {visible.map((item) => (
         <article
           key={item.id}
-          className="space-y-3 rounded-2xl border border-orange-200 bg-white/80 p-5"
+          className="space-y-3 rounded-2xl border border-border bg-card p-5"
         >
           <div className="flex justify-between gap-3 text-sm">
             <span>
@@ -208,7 +208,7 @@ export default function StudyLibrary() {
               onClick={() => void mutate(item)}
               className="text-red-700"
             >
-              Delete
+              删除
             </button>
           </div>
           <p className="whitespace-pre-wrap break-words font-medium">
@@ -217,13 +217,13 @@ export default function StudyLibrary() {
           {filter === "due" && !revealed.includes(item.id) ? (
             <button
               onClick={() => setRevealed((v) => [...v, item.id])}
-              className="rounded-lg bg-orange-100 px-3 py-2"
+              className="rounded-lg bg-muted px-3 py-2"
             >
-              Reveal meaning
+              显示释义
             </button>
           ) : (
-            <p className="whitespace-pre-wrap break-words text-orange-900/75">
-              {readableNote(item.kind, item.note) || "No additional notes."}
+            <p className="whitespace-pre-wrap break-words text-foreground">
+              {readableNote(item.kind, item.note) || "暂无补充笔记。"}
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -231,14 +231,14 @@ export default function StudyLibrary() {
               href={`/reader/${item.document.id}?sourceLanguage=${savedSourceLanguage(item.note)}${item.location ? `&location=${encodeURIComponent(item.location)}` : ""}`}
               className="underline"
             >
-              Back to original
+              返回原文
             </Link>
             {item.kind === "word" && (
               <>
                 <span>
                   {item.reviewAt
-                    ? `Next review: ${new Date(item.reviewAt).toLocaleString()}`
-                    : "Ready for review"}
+                    ? `下次复习：${new Date(item.reviewAt).toLocaleString()}`
+                    : "可以复习"}
                 </span>
                 {(filter !== "due" || revealed.includes(item.id)) && (
                   <>
@@ -247,14 +247,14 @@ export default function StudyLibrary() {
                       onClick={() => void mutate(item, "again")}
                       className="rounded-lg border px-3 py-2"
                     >
-                      Review again in 10 min
+                      10 分钟后再练
                     </button>
                     <button
                       disabled={busy === item.id}
                       onClick={() => void mutate(item, "good")}
-                      className="rounded-lg bg-orange-500 px-3 py-2 text-white"
+                      className="rounded-lg bg-primary px-3 py-2 text-white"
                     >
-                      I remembered
+                      记住了
                     </button>
                   </>
                 )}

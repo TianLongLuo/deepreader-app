@@ -1,8 +1,8 @@
-import { Inter } from "next/font/google";
+import ThemeProvider from "@/components/layout/theme-provider";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
-const inter = Inter({ subsets: ["latin"] });
+
 
 export const metadata = {
   title: "DeepReader - AI Assisted Reading",
@@ -15,9 +15,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={cn(inter.className, "min-h-screen bg-background text-foreground antialiased")}>
-        {children}
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{__html: `try{var p=JSON.parse(localStorage.getItem('deepreader-ui')||'{}').state||{};var d=p.theme==='dark'||(p.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light'}catch{}`}} /></head>
+      <body className={cn("min-h-screen bg-background text-foreground antialiased")}>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

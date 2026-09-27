@@ -36,7 +36,7 @@ export default function ParagraphNode({ paragraph, isActive, onClick }: Paragrap
   const renderText = () => {
     const sourceText = paragraph.normalizedText || paragraph.rawText;
     const spans = getActionAnnotationSlots(explanationData?.output, sourceText);
-    
+
     if (!isActive || !spans || spans.length === 0) {
       return <span>{paragraph.rawText}</span>;
     }
@@ -45,7 +45,7 @@ export default function ParagraphNode({ paragraph, isActive, onClick }: Paragrap
     // Simplifying here to just show how it connects.
     let lastIndex = 0;
     const elements: React.ReactNode[] = [];
-    
+
     spans.forEach((span, idx) => {
       // Add un-annotated text before span
       if (span.start_offset > lastIndex) {
@@ -65,7 +65,7 @@ export default function ParagraphNode({ paragraph, isActive, onClick }: Paragrap
               </span>
             </Tooltip.Trigger>
             <Tooltip.Portal>
-              <Tooltip.Content className="z-50 max-w-sm bg-popover text-popover-foreground border shadow-xl p-3 rounded-lg text-sm animate-in fade-in zoom-in-95">
+              <Tooltip.Content className="z-50 max-w-sm bg-popover text-popover-foreground border shadow-sm p-3 rounded-lg text-sm animate-in fade-in zoom-in-95">
                 <div className="font-semibold text-xs uppercase tracking-wider mb-1 text-primary">{style.label}</div>
                 <div>{span.text}</div>
                 <Tooltip.Arrow className="fill-popover border-t" />
@@ -88,11 +88,11 @@ export default function ParagraphNode({ paragraph, isActive, onClick }: Paragrap
   };
 
   return (
-    <div 
+    <div
       ref={ref}
       onClick={onClick}
       className={cn(
-        "text-lg leading-relaxed cursor-pointer p-4 rounded-xl transition-all duration-300 ease-out border border-transparent",
+        "text-lg leading-relaxed cursor-pointer p-4 rounded-xl transition-colors duration-300 ease-out border border-transparent",
         isActive ? "bg-background shadow-[0_4px_30px_rgba(0,0,0,0.05)] border-border ring-1 ring-primary/20" : "hover:bg-muted/50 text-foreground/90"
       )}
     >

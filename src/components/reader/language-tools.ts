@@ -7,7 +7,8 @@ export function sentencePatternHint(language: SourceLanguage) {
     ? 'Sujeto explícito / tácito · verbo conjugado · complementos · orden flexible'
     : 'SV / SVC / SVO / SVOO / SVOC';
 }
-export async function speakInBrowser(text: string, language: SourceLanguage) {
+export async function speakInBrowser(text: string, language: SourceLanguage, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   if (typeof window === 'undefined' || !('speechSynthesis' in window))
     throw new Error('此浏览器不支持朗读，请使用支持语音的浏览器。');
   const synth = window.speechSynthesis;
@@ -20,14 +21,18 @@ export async function speakInBrowser(text: string, language: SourceLanguage) {
     });
     voices = synth.getVoices();
   }
+  signal?.throwIfAborted();
   const voice = voices.find(item => item.lang.toLowerCase().replace('_','-').split('-')[0] === language);
   if (!voice) throw new Error(`此设备没有${language === 'es' ? '西班牙语' : '英语'}语音，请在系统中安装对应语音后重试。`);
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = voice.lang;
   utterance.voice = voice;
   await new Promise<void>((resolve, reject) => {
-    utterance.onend = () => resolve();
-    utterance.onerror = () => reject(new Error('朗读失败，请检查设备语音设置后重试。'));
+    const stop = () => { synth.cancel(); reject(new DOMException('Aborted', 'AbortError')); };
+    const clean = () => signal?.removeEventListener('abort', stop);
+    signal?.addEventListener('abort', stop, {once:true});
+    utterance.onend = () => { clean(); resolve(); };
+    utterance.onerror = () => { clean(); reject(new Error('朗读失败，请检查设备语音设置后重试。')); };
     synth.cancel();
     synth.speak(utterance);
   });

@@ -11,9 +11,8 @@ import { DEFAULT_MIMO_BASE_URL, DEFAULT_MIMO_MODEL, validateMimoBaseUrl } from '
 export const PRIMARY_ADMIN_EMAIL = 'admin@qq.com';
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
-const BUILT_IN_DEEPSEEK_API_KEY_ENCRYPTED =
-  '18NETnVN5LT/smZ51iCYgtA9lZ8Sja0Uy8R+wq9NfKKO67K9I/tKF/50+JpLr6VY1DLEfjzL3eYYuA3IHrCDlMr0sg==';
-const BUILT_IN_DEEPSEEK_API_KEY_PREVIEW = 'sk-****c077';
+const BUILT_IN_DEEPSEEK_API_KEY_ENCRYPTED = null;
+const BUILT_IN_DEEPSEEK_API_KEY_PREVIEW = null;
 
 export type GlobalAIProviderKey = 'deepseek' | 'gemini' | 'mimo';
 
@@ -148,7 +147,7 @@ export class AppConfigService {
   }
 
   isPrimaryAdminEmail(email?: string | null): boolean {
-    return (email || '').trim().toLowerCase() === PRIMARY_ADMIN_EMAIL;
+    return (email || '').trim().toLowerCase() === (process.env.ADMIN_EMAIL?.trim().toLowerCase() || PRIMARY_ADMIN_EMAIL);
   }
 
   async getConfig(): Promise<StoredAppConfig> {

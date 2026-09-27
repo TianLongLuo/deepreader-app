@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: 'AI settings are currently available only to admin@qq.com.',
+          message: 'AI settings are currently available only to 管理员.',
         },
         { status: 403 }
       );

@@ -1,3 +1,4 @@
+import { assertSameOrigin } from '@/lib/auth-guard';
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { dracConsoleService } from '@/server/admin/dracconsole.service';
@@ -7,6 +8,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertSameOrigin(req);
     const admin = await requireAdmin();
     const resolvedParams = await params;
 

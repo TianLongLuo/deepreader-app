@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
+import {usePathname} from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useReaderStore } from "@/hooks/use-reader-store";
 
 export default function SidebarShell({ children }: { children: ReactNode }) {
-  const sidebarCollapsed = useReaderStore((s) => s.sidebarCollapsed);
+  const pathname=usePathname();
+  useEffect(()=>{document.querySelectorAll('nav a[href]').forEach(a=>{if(a.getAttribute("href")===pathname)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});},[pathname]);
+  const toggle=useRef<HTMLButtonElement>(null);
+  const savedCollapsed = useReaderStore((s) => s.sidebarCollapsed);
+  const customized=useReaderStore(s=>s.sidebarCustomized);
+  const sidebarCollapsed=customized?savedCollapsed:pathname.startsWith("/reader/");
   const setSidebarCollapsed = useReaderStore((s) => s.setSidebarCollapsed);
+
   const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     const dismiss = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileOpen(false);
+      if (event.key === "Escape") {setMobileOpen(false);toggle.current?.focus();}
     };
     window.addEventListener("keydown", dismiss);
     return () => window.removeEventListener("keydown", dismiss);
@@ -26,10 +33,10 @@ export default function SidebarShell({ children }: { children: ReactNode }) {
         />
       )}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-72 transition-transform md:relative md:z-40 md:shrink-0 md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} ${sidebarCollapsed ? "md:w-0" : "md:w-72"}`}
+        className={`fixed inset-y-0 left-0 z-50 w-[216px] ui-motion md:relative md:z-40 md:shrink-0 md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} ${sidebarCollapsed ? "md:w-0" : "md:w-[216px]"}`}
       >
         <div
-          className={`sticky top-0 flex h-screen w-72 flex-col overflow-hidden ${mobileOpen ? "visible" : "invisible"} ${sidebarCollapsed ? "md:invisible" : "md:visible"}`}
+          className={`sticky top-0 flex h-screen w-[216px] flex-col overflow-hidden ${mobileOpen ? "visible" : "invisible"} ${sidebarCollapsed ? "md:invisible" : "md:visible"}`}
           onClick={(event) => {
             if ((event.target as HTMLElement).closest("a"))
               setMobileOpen(false);
@@ -40,9 +47,10 @@ export default function SidebarShell({ children }: { children: ReactNode }) {
       </div>
       <button
         type="button"
+        ref={toggle}
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-label={mobileOpen ? "关闭导航" : "打开导航"}
-        className="fixed left-2 top-3 z-[55] flex h-9 w-9 items-center justify-center rounded-full border border-orange-200 bg-white text-orange-700 shadow md:hidden"
+        className="fixed left-2 top-3 z-[55] flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm md:hidden"
       >
         {mobileOpen ? (
           <PanelLeftClose className="h-4 w-4" />
@@ -53,8 +61,8 @@ export default function SidebarShell({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-        className="fixed top-6 z-50 hidden h-8 w-8 items-center justify-center rounded-full border border-orange-200/80 bg-white/90 text-orange-700 shadow-md shadow-orange-100/50 transition-all duration-300 ease-in-out hover:bg-orange-100 hover:text-orange-900 md:flex"
-        style={{ left: sidebarCollapsed ? 8 : 296 }}
+        className="fixed top-6 z-50 hidden h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-primary shadow-md  transition-colors duration-300 ease-in-out hover:bg-muted hover:text-foreground md:flex"
+        style={{ left: sidebarCollapsed ? 8 : 176 }}
         title={
           sidebarCollapsed
             ? "展开侧边栏 / Expand sidebar"

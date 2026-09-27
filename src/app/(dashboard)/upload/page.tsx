@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState,useRef,useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,14 +12,18 @@ import {
 
 export default function UploadPage() {
   const router = useRouter();
+  const uploadRequest=useRef<XMLHttpRequest|null>(null);
+  useEffect(()=>()=>uploadRequest.current?.abort(),[]);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [phase,setPhase]=useState('');
   const [error, setError] = useState('');
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if(loading)return;
     const droppedFile = e.dataTransfer.files[0];
-    validateAndSetFile(droppedFile);
+    if(droppedFile)validateAndSetFile(droppedFile);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,107 +35,104 @@ export default function UploadPage() {
     setError('');
     const validTypes = ['application/pdf', 'application/epub+zip'];
     const validExts = ['.pdf', '.epub'];
-    
+
     if (!validTypes.includes(f.type) && !validExts.some(ext => f.name.toLowerCase().endsWith(ext))) {
-      setError('Only PDF and EPUB files are supported.');
+      setError('仅支持 PDF 和 EPUB 文件。');
       return;
     }
-    
+
     if (f.size > MAX_DOCUMENT_UPLOAD_BYTES) {
-      setError(`File too large. Maximum size is ${MAX_DOCUMENT_UPLOAD_MB}MB.`);
+      setError(`文件过大，最大支持 ${MAX_DOCUMENT_UPLOAD_MB}MB.`);
       return;
     }
-    
+
     setFile(f);
   };
 
   const handleUpload = async () => {
-    if (!file) return;
-    setLoading(true);
+    if (!file||loading) return;
+    setLoading(true);setPhase('准备文件…');
     setError('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const res = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
+      const form=new FormData();form.set('file',file);
+      await new Promise<void>((resolve,reject)=>{
+        const xhr=new XMLHttpRequest();uploadRequest.current=xhr;
+        xhr.open('POST','/api/documents/upload');
+        xhr.upload.onprogress=e=>{if(e.lengthComputable)setPhase(e.loaded===e.total?'正在保存书籍…':'上传文件 '+Math.round(e.loaded/e.total*100)+'%');};
+        xhr.onload=()=>{try{const result=JSON.parse(xhr.responseText);if(xhr.status>=200&&xhr.status<300&&result.success)resolve();else reject(new Error(result.error||'上传失败，请重试。'));}catch{reject(new Error('服务器响应异常，请重试。'));}};
+        xhr.onerror=()=>reject(new Error('网络连接失败，请重试。'));
+        xhr.onabort=()=>reject(new Error('已取消上传。'));
+        xhr.send(form);
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      router.push('/documents');
-      router.refresh();
-    } catch (err) {
-      setError((err as Error).message);
-      setLoading(false);
-    }
+      router.push('/documents');router.refresh();
+    } catch(err){setError((err as Error).message);}
+    finally{uploadRequest.current=null;setLoading(false);}
   };
 
   return (
     <div className="cat-page-shell mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center">
       <Card className="relative z-10 w-full max-w-2xl p-4 md:p-8">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-orange-200 via-amber-100 to-rose-100 text-5xl shadow-lg shadow-orange-100">🐱</div>
-          <CardTitle className="text-4xl font-black text-orange-950">Upload Document</CardTitle>
-          <CardDescription className="text-orange-900/65">
-            Drop a PDF or EPUB into the kitten basket. Files up to{' '}
-            {MAX_DOCUMENT_UPLOAD_MB}MB are supported.
+
+          <CardTitle className="text-4xl font-semibold text-foreground">导入书籍</CardTitle>
+          <CardDescription className="text-foreground">
+            支持 PDF 和 EPUB，最大{' '}
+            {MAX_DOCUMENT_UPLOAD_MB}MB。
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div 
+          <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
-            className={`rounded-[2rem] border-2 border-dashed p-12 text-center transition-all ${
-              file ? 'border-orange-400 bg-orange-100/70 shadow-inner shadow-orange-200' : 'border-orange-200 bg-orange-50/50 hover:border-orange-400 hover:bg-orange-100/50'
+            className={`rounded-xl border-2 border-dashed p-12 text-center transition-colors ${
+              file ? 'border-primary bg-muted shadow-inner ' : 'border-border bg-card hover:border-primary hover:bg-muted'
             }`}
           >
             {file ? (
               <div className="flex flex-col items-center space-y-4">
-                <div className="rounded-full bg-orange-200 p-4">
-                  <FileText className="h-12 w-12 text-orange-700" />
+                <div className="rounded-full bg-muted p-4">
+                  <FileText className="h-12 w-12 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-orange-950">{file.name}</h3>
-                  <p className="text-sm text-orange-900/55">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  <h3 className="text-lg font-medium text-foreground [overflow-wrap:anywhere]">{file.name}</h3>
+                  <p className="text-sm text-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setFile(null)}>Remove</Button>
+                <Button disabled={loading} variant="outline" size="sm" onClick={() => setFile(null)}>移除</Button>
               </div>
             ) : (
               <div className="flex flex-col items-center space-y-4">
-                <div className="rounded-full bg-orange-100 p-4 text-4xl shadow-inner shadow-orange-200">
-                  <UploadCloud className="h-10 w-10 text-orange-600" />
+                <div className="rounded-full bg-muted p-4 text-4xl shadow-inner ">
+                  <UploadCloud className="h-10 w-10 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-orange-950">Drag & drop your file here</h3>
-                  <p className="mt-1 text-sm text-orange-900/55">or click to browse — meow</p>
+                  <h3 className="text-lg font-bold text-foreground">将文件拖到这里</h3>
+                  <p className="mt-1 text-sm text-foreground">或选择设备上的文件</p>
                 </div>
-                <input 
-                  type="file" 
-                  id="file-upload" 
-                  className="hidden" 
+                <input
+                  type="file"
+                  id="file-upload"
+                  className="hidden"
                   accept=".pdf,.epub,application/pdf,application/epub+zip"
                   onChange={handleFileChange}
                 />
                 <Button variant="secondary" onClick={() => document.getElementById('file-upload')?.click()}>
-                  Browse Files
+                  选择文件
                 </Button>
               </div>
             )}
           </div>
-          
+
+          {loading&&phase!=='正在保存书籍…'&&<Button variant="outline" onClick={()=>uploadRequest.current?.abort()}>取消上传</Button>}
           {error && (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-600">
+            <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-600">
               {error}
             </div>
           )}
 
           <div className="mt-8 flex justify-end">
             <Button size="lg" disabled={!file || loading} onClick={handleUpload}>
-              {loading ? 'Kitten is parsing...' : 'Upload and Parse'}
+              {loading ? phase : '导入书籍'}
             </Button>
           </div>
         </CardContent>

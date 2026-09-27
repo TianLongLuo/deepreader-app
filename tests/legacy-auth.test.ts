@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({findUnique:vi.fn(),query:vi.fn(),create:vi.fn(),compare:vi.fn()}));
+vi.mock('@/lib/prisma',()=>({prisma:{user:{findUnique:m.findUnique},$queryRaw:m.query,session:{create:m.create}}}));
+vi.mock('bcryptjs',()=>({default:{compare:m.compare}}));
+vi.mock('next/headers',()=>({cookies:vi.fn()}));
+vi.mock('@/lib/logger',()=>({createChildLogger:()=>({info:vi.fn(),error:vi.fn()})}));
+vi.mock('@/server/app-config/app-config.service',()=>({appConfigService:{isPrimaryAdminEmail:()=>false,getPublicConfig:async()=>({allowRegistrations:true})}}));
+import {loginUser,registerUser} from '@/lib/auth';
+beforeEach(()=>{vi.clearAllMocks();m.compare.mockResolvedValue(true);m.query.mockResolvedValue([{email:'Alice@Example.com'}]);m.findUnique.mockImplementation(async({where})=>where.email==='Alice@Example.com'?{id:'old',email:where.email,role:'USER',passwordHash:'old-hash',workspaceMembers:[]}:null);});
+it.each(['old','x'.repeat(100)])('logs into legacy mixed-case account with existing password',async password=>{await expect(loginUser('alice@example.com',password)).resolves.toMatchObject({user:{id:'old'}});});
+it('blocks registering a case variant of a legacy account',async()=>{await expect(registerUser('alice@example.com','new-password')).rejects.toThrow('already registered');});
+it('requires exact spelling for legacy case-colliding accounts',async()=>{m.query.mockResolvedValue([{email:'Alice@Example.com'},{email:'alice@example.com'}]);await expect(loginUser('ALICE@EXAMPLE.COM','old')).rejects.toThrow();await expect(loginUser('Alice@Example.com','old')).resolves.toMatchObject({user:{id:'old'}});});

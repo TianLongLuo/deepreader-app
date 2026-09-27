@@ -1,0 +1,2 @@
+import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {expect,it} from 'vitest';import {IconButton} from '@/components/ui/icon-button';
+it('keeps button accessible name and disabled state',()=>{const html=renderToStaticMarkup(createElement(IconButton,{'aria-label':'收藏',disabled:true}));expect(html).toContain('aria-label="收藏"');expect(html).toContain('disabled');});

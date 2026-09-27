@@ -1,7 +1,12 @@
+import { getStudyLanguage, type StudyLanguage } from '@/components/reader/study-interaction';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist,createJSONStorage } from 'zustand/middleware';
 
 type ReaderState = {
+  studyPinned:boolean;
+  setStudyPinned:(value:boolean)=>void;
+  studyLanguages: Partial<Record<'en'|'es', StudyLanguage>>;
+  setStudyLanguage: (mode:StudyLanguage)=>void;
   sourceLanguage: 'en' | 'es';
   setSourceLanguage: (sourceLanguage: 'en' | 'es') => void;
   fontSize: number;
@@ -25,15 +30,20 @@ type ReaderState = {
     width: number;
     height: number;
   }) => void;
+  sidebarCustomized:boolean;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean) => void;
 };
 
 export const useReaderStore = create<ReaderState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
+      studyPinned:false,
+      setStudyPinned:studyPinned=>set({studyPinned}),
+      studyLanguages: {},
+      setStudyLanguage: (mode) => {const source=get().sourceLanguage; const valid=getStudyLanguage(source,{[source]:mode});set({studyLanguages:{...get().studyLanguages,[source]:valid},explanationLanguage:valid==='es'?'Spanish':valid==='bilingual'?'Chinese':'English',bilingualMode:valid==='bilingual'});},
       sourceLanguage: 'en',
-      setSourceLanguage: (sourceLanguage) => set({ sourceLanguage }),
+      setSourceLanguage: (sourceLanguage) => {const mode=getStudyLanguage(sourceLanguage,get().studyLanguages);set({sourceLanguage,explanationLanguage:mode==='es'?'Spanish':mode==='bilingual'?'Chinese':'English',bilingualMode:mode==='bilingual'});},
       fontSize: 18,
       lineHeight: 1.8,
       setTypography: (fontSize, lineHeight) => set({fontSize, lineHeight}),
@@ -56,11 +66,13 @@ export const useReaderStore = create<ReaderState>()(
           explanationPanelWidth: width,
           explanationPanelHeight: height,
         }),
+      sidebarCustomized:false,
       sidebarCollapsed: false,
-      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed,sidebarCustomized:true }),
     }),
     {
       name: 'reader-preferences',
+      storage:createJSONStorage(()=>({getItem:key=>{try{return localStorage.getItem(key);}catch{return null;}},setItem:(key,value)=>{try{localStorage.setItem(key,value);}catch{}},removeItem:key=>{try{localStorage.removeItem(key);}catch{}}})),
     }
   )
 );

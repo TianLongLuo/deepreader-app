@@ -30,31 +30,40 @@ export async function registerUser(
   password: string,
   name?: string
 ): Promise<AuthUser> {
+  email=email.trim().toLowerCase();
+  if(email===(process.env.ADMIN_LOGIN_NAME||'Lone').trim().toLowerCase())throw new Error('This account is reserved for the administrator');
   // This address has privileged access throughout the application. It must be
   // provisioned by the operator, never claimed through public registration.
   if (appConfigService.isPrimaryAdminEmail(email)) {
     throw new Error('This email is reserved for the administrator');
   }
 
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)throw new Error('Valid email required');
+  if(typeof password!=='string'||password.length<8||Buffer.byteLength(password,'utf8')>72)throw new Error('Password must be at least 8 characters and at most 72 bytes');
+  if(name&&name.length>80)throw new Error('Name is too long');
   const publicConfig = await appConfigService.getPublicConfig();
   if (!publicConfig.allowRegistrations) {
     throw new Error('Registration is currently closed');
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
+  const existing = await matchingEmails(email);
+  if (existing.length) {
     throw new Error('Email already registered');
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
+  return createAccountRecords(email,passwordHash,name,'USER');
+}
+
+async function createAccountRecords(email:string,passwordHash:string,name:string|undefined,role:string):Promise<AuthUser>{
   const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const newUser = await tx.user.create({
       data: {
         email,
         passwordHash,
         name: name || email.split('@')[0],
-        role: 'USER',
+        role,
       },
     });
 
@@ -133,7 +142,16 @@ export async function loginUser(
   email: string,
   password: string
 ): Promise<{ user: AuthUser; token: string }> {
-  const user = await prisma.user.findUnique({
+  const supplied=email.trim();
+  const identifier=supplied.toLowerCase();
+  const isAdminLogin=identifier===(process.env.ADMIN_LOGIN_NAME||'Lone').trim().toLowerCase();
+  email=isAdminLogin?(process.env.ADMIN_EMAIL||'').trim().toLowerCase():identifier;
+  if(!email||typeof password!=='string'||!password.length)throw new Error('Invalid email or password');
+  const candidates=await matchingEmails(email);
+  const exact=candidates.find(row=>row.email===(isAdminLogin?email:supplied));
+  if(candidates.length>1&&!exact)throw new Error('Use the original email spelling for this legacy account');
+  email=exact?.email || (candidates.length===1?candidates[0].email:email);
+  const lookup = () => prisma.user.findUnique({
     where: { email },
     include: {
       workspaceMembers: {
@@ -142,6 +160,16 @@ export async function loginUser(
       },
     },
   });
+
+  let user=await lookup();
+  if(!user&&isAdminLogin){
+    const hash=process.env.ADMIN_PASSWORD_HASH;
+    if(!hash||!await bcrypt.compare(password,hash))throw new Error('Invalid email or password');
+    try{await createAccountRecords(email,hash,process.env.ADMIN_LOGIN_NAME||'Lone','ADMIN');}
+    catch(error){if(!await lookup())throw error;}
+    user=await lookup();
+  }
+  if(isAdminLogin&&user?.role!=='ADMIN')throw new Error('Invalid email or password');
 
   if (!user) {
     throw new Error('Invalid email or password');
@@ -251,7 +279,7 @@ export async function requireAuth(): Promise<AuthUser> {
 export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireAuth();
 
-  if (user.role !== 'ADMIN' && user.email !== 'admin@qq.com') {
+  if (user.role !== 'ADMIN') {
     throw new Error('Admin access required');
   }
 
@@ -369,4 +397,9 @@ ORIGINAL RESPONSE:
 """
 
 Return ONLY the corrected valid JSON. Do not include any text outside the JSON object.`;
+}
+
+// SQLite NOCASE lookup preserves legacy spelling without renaming/merging accounts.
+async function matchingEmails(email:string):Promise<{email:string}[]>{
+  return prisma.$queryRaw<{email:string}[]>`SELECT email FROM users WHERE email = ${email} COLLATE NOCASE`;
 }

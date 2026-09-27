@@ -33,8 +33,8 @@ beforeAll(async () => {
   )) as typeof import("@/lib/prisma") & { dir: string };
   schemaDir = mkdtempSync(join(tmpdir(), "deepreader-reading-schema-"));
   const schema = readFileSync("prisma/schema.prisma", "utf8").replace(
-    "file:./dev.db",
-    "file:" + join(mocked.dir, "test.db").replaceAll("\\", "/"),
+    'env("DATABASE_URL")',
+    JSON.stringify("file:" + join(mocked.dir, "test.db").replaceAll("\\", "/")),
   );
   const schemaPath = join(schemaDir, "schema.prisma");
   writeFileSync(schemaPath, schema);

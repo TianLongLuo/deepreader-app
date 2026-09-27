@@ -58,16 +58,16 @@ it('rejects untrusted endpoint updates before persisting and rejects tampered st
 });
 it('denies non-admin tests before accessing storage or creating a provider',async()=>{
  mocks.requireAdmin.mockRejectedValue(new Error('Forbidden'));
- expect((await POST()).status).toBe(403);expect(mocks.readFile).not.toHaveBeenCalled();expect(mocks.provider).not.toHaveBeenCalled();
+ expect((await POST(new Request('http://localhost/api/dracconsole/config/test',{method:'POST'}))).status).toBe(403);expect(mocks.readFile).not.toHaveBeenCalled();expect(mocks.provider).not.toHaveBeenCalled();
 });
 it('tests the saved MiMo credentials with no key included in response',async()=>{
  const service=new AppConfigService();await service.updateConfig({globalMimoApiKey:secret,globalMimoBaseUrl:MIMO_BASE_URLS.ams,globalMimoModel:'mimo-saved'});
- const result=await POST();expect(result.status).toBe(200);
+ const result=await POST(new Request('http://localhost/api/dracconsole/config/test',{method:'POST'}));expect(result.status).toBe(200);
  expect(mocks.provider).toHaveBeenCalledWith(expect.objectContaining({apiKey:secret,baseUrl:MIMO_BASE_URLS.ams,model:'mimo-saved',retryCount:0}));
  expect(await result.text()).not.toContain(secret);
 });
 it('rejects tests without a saved MiMo key and sanitizes provider setup errors',async()=>{
- expect((await POST()).status).toBe(400);expect(mocks.provider).not.toHaveBeenCalled();
+ expect((await POST(new Request('http://localhost/api/dracconsole/config/test',{method:'POST'}))).status).toBe(400);expect(mocks.provider).not.toHaveBeenCalled();
  mocks.disk=JSON.stringify({globalMimoApiKeyEncrypted:'cipher'});mocks.decrypt.mockImplementation(()=>{throw new Error(secret);});
- const result=await POST();expect(result.status).toBe(400);expect(await result.text()).not.toContain(secret);
+ const result=await POST(new Request('http://localhost/api/dracconsole/config/test',{method:'POST'}));expect(result.status).toBe(400);expect(await result.text()).not.toContain(secret);
 });

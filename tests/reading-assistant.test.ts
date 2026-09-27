@@ -225,3 +225,25 @@ it("checks authentication and ownership before resolving AI or generating", asyn
   });
   expect(mocks.resolve).not.toHaveBeenCalled();
 });
+it('sends the selected word and full context with independent explanation language', async () => {
+  const complete=vi.fn().mockResolvedValue({content:JSON.stringify({answer:'A young boy.',citations:[{quote:'El niño está aquí.'}]})});
+  const c=config(complete);
+  const request=readingRequestSchema.parse({documentId:'word-languages',mode:'word',targetWord:'niño',text:'El niño está aquí.',previousText:'Su madre espera.',sourceLanguage:'es',language:'English',definitionMode:'monolingual'});
+  await generateReadingAnswer({workspaceId:'languages',userId:'fixture'},request,c);
+  const prompt=complete.mock.calls[0][0] as {systemPrompt:string;userPrompt:string};
+  expect(prompt.systemPrompt).toContain('Do not automatically add Chinese translations');
+  expect(prompt.userPrompt).toContain('niño');
+  expect(prompt.userPrompt).toContain('El niño está aquí.');
+  expect(prompt.userPrompt).toContain('English');
+  await generateReadingAnswer({workspaceId:'languages',userId:'fixture'},{...request,definitionMode:'bilingual',language:'Chinese'},c);
+  expect(complete).toHaveBeenCalledTimes(2);
+  expect(complete.mock.calls[1][0].systemPrompt).toContain('source language AND Chinese');
+});
+
+it('requests a compact word explanation without repeating dictionary material',async()=>{
+ const c=config();await generateReadingAnswer({workspaceId:'compact',userId:'one'},{...input,mode:'word',targetWord:'Alice'},c);
+ const request=(c.provider.complete as any).mock.calls[0][0];
+ expect(request.maxTokens).toBeLessThanOrEqual(600);
+ expect(request.systemPrompt).toContain('at most two short sentences');
+ expect(request.systemPrompt).not.toContain('Include the original sentence');
+});

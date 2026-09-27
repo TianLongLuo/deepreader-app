@@ -3,56 +3,23 @@ import { useEffect, useRef, useState } from "react";
 import { speakInBrowser } from "./language-tools";
 import { useReaderStore } from "@/hooks/use-reader-store";
 
-export type ReadingEntry = {
-  id: string;
-  kind: string;
-  text: string;
-  note: string | null;
-  location: string | null;
-  createdAt: string;
-};
-export type ReadingSelection = {
-  text: string;
-  location: string;
-  previousText?: string;
-  nextText?: string;
-  chapterText?: string;
-};
-type Answer = {
-  provider?: string;
-  model?: string;
-  answer: string;
-  citations?: { quote: string }[];
-  questions?: { question: string; answer: string; quote: string }[];
-};
-type Dictionary = {
-  word: string;
-  phonetic?: string;
-  audioUrl?: string;
-  sourceUrl?: string;
-  source?: string;
-  provider?: string;
-  licenseUrl?: string;
-  attribution?: string;
-  definitionLanguage?: string;
-  meanings: {
-    partOfSpeech: string;
-    definitions: { definition: string; example?: string }[];
-  }[];
-};
+import type {ReadingEntry,ReadingSelection,Answer,Dictionary} from '@/types/reading-tools';
+export type {ReadingEntry,ReadingSelection} from '@/types/reading-tools';
 export async function readingRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   const data = await response.json();
   if (!response.ok)
-    throw new Error(data.error || "Request failed. Please retry.");
+    throw Object.assign(new Error(data.error || "请求失败，请重试。"),{status:response.status});
   return data;
 }
 const button =
-  "rounded-xl border border-orange-200 px-3 py-2 text-sm hover:bg-orange-100 focus-visible:outline-2 focus-visible:outline-orange-500 disabled:opacity-40";
+  "rounded-xl border border-border px-3 py-2 text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40";
 const input =
-  "w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-orange-950";
+  "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground";
 export default function ReadingTools({
   documentId,
+  initialTab="ai",
+  embedded = false,
   selection,
   open,
   onClose,
@@ -66,6 +33,8 @@ export default function ReadingTools({
   onRestoreSelection,
 }: {
   documentId: string;
+  initialTab?:string;
+  embedded?: boolean;
   selection: ReadingSelection | null;
   open: boolean;
   onClose: () => void;
@@ -84,6 +53,7 @@ export default function ReadingTools({
   onRestoreSelection: (selection: ReadingSelection) => void;
 }) {
   const {
+    bilingualMode,
     fontSize,
     lineHeight,
     setTypography,
@@ -94,7 +64,8 @@ export default function ReadingTools({
     sourceLanguage,
     setSourceLanguage,
   } = useReaderStore();
-  const [tab, setTab] = useState("ai");
+  const [tab, setTab] = useState(initialTab);
+  useEffect(()=>setTab(initialTab),[initialTab]);
   const [query, setQuery] = useState("");
   const [word, setWord] = useState("");
   const [wordAnswer, setWordAnswer] = useState<{
@@ -131,9 +102,8 @@ export default function ReadingTools({
     setRevealed([]);
     setResponses({});
     if (selection) {
-      setTab(
-        /^[\p{L}\p{M}'’-]+$/u.test(selection.text.trim()) ? "dictionary" : "ai",
-      );
+
+      setTab(initialTab);
       setWord(
         /^[\p{L}\p{M}'’-]+$/u.test(selection.text.trim())
           ? selection.text.trim()
@@ -141,6 +111,7 @@ export default function ReadingTools({
       );
     }
   }, [selection]);
+  useEffect(()=>{if(tab==="dictionary"&&word.trim())lookupWord(word);},[sourceLanguage,explanationLanguage,bilingualMode]);
   useEffect(() => () => controller.current?.abort(), []);
   async function perform(action: (signal: AbortSignal) => Promise<void>) {
     controller.current?.abort();
@@ -157,6 +128,21 @@ export default function ReadingTools({
     } finally {
       if (controller.current === c) setBusy(false);
     }
+  }
+  function lookupWord(term: string) {
+    if(!term.trim())return;
+    setDictionary(null);setWordAnswer(null);
+    void perform(async signal=>{
+      const context=selection?.contextText || selection?.text || term;
+      const [lexical,contextual] = await Promise.allSettled([
+        readingRequest(`/api/dictionary?word=${encodeURIComponent(term.trim().normalize('NFC'))}&language=${sourceLanguage}`,{signal}),
+        readingRequest('/api/reading-assistant',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({documentId,mode:'word',targetWord:term.trim(),text:context.slice(0,24000),previousText:selection?.previousText?.slice(0,6000),nextText:selection?.nextText?.slice(0,6000),question:`Explain the word: ${term}`,level:readingLevel,language:explanationLanguage,definitionMode:bilingualMode?'bilingual':'monolingual',sourceLanguage})})
+      ]);
+      if(signal.aborted)return;
+      if(lexical.status==='fulfilled')setDictionary(lexical.value);
+      if(contextual.status==='fulfilled')setWordAnswer({word:term.trim(),answer:contextual.value});
+      else throw new Error('语境解析暂不可用，请检查 AI 配置后重试。词典结果若可用会保留。');
+    });
   }
   function ask(mode: string) {
     if (!selection?.text) return;
@@ -220,55 +206,36 @@ export default function ReadingTools({
   };
   return (
     <>
-      <button
+      {!embedded && <button
         type="button"
         onClick={onOpen}
-        className="absolute bottom-4 right-4 z-20 rounded-full bg-orange-600 px-5 py-3 text-sm font-bold text-white shadow-lg"
+        className="absolute bottom-4 right-4 z-20 rounded-full bg-primary px-5 py-3 text-sm font-bold text-white shadow-lg"
       >
         查词 · 阅读工具
-      </button>
+      </button>}
       {open && (
         <aside
           aria-label="阅读工具"
-          className="absolute inset-y-3 right-3 z-40 flex w-[min(440px,calc(100%-24px))] flex-col overflow-hidden rounded-3xl border border-orange-200 bg-orange-50 text-orange-950 shadow-2xl"
+          className={embedded ? "flex h-full min-h-0 flex-col overflow-hidden bg-card text-foreground" : "absolute inset-y-3 right-3 z-40 flex w-[min(440px,calc(100%-24px))] flex-col overflow-hidden rounded-3xl border border-border bg-card text-foreground shadow-sm "}
         >
-          <div className="flex items-center justify-between border-b border-orange-200 p-4">
-            <h2 className="font-semibold">阅读工具</h2>
-            <button
-              className={button}
-              onClick={close}
-              aria-label="关闭阅读工具"
-            >
-              关闭
-            </button>
-          </div>
-          <label className="flex items-center justify-between gap-3 border-b border-orange-200 px-4 py-3 text-sm">
-            学习语言
-            <select aria-label="学习语言" className="rounded-lg border border-orange-200 bg-white px-3 py-2" value={sourceLanguage} onChange={event=>{
+          <label className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm">
+            原文语言
+            <select aria-label="原文语言" className="rounded-lg border border-border bg-card px-3 py-2" value={sourceLanguage} onChange={event=>{
               controller.current?.abort();setBusy(false);lastAction.current=null;
               setDictionary(null);setWordAnswer(null);setAnswer(null);setHistory([]);setError("");setStatus("");setRevealed([]);setResponses({});
               setSourceLanguage(event.target.value as "en"|"es");
             }}><option value="en">英语 · English</option><option value="es">西班牙语 · Español</option></select>
           </label>
-          <label className="flex items-center justify-between gap-3 border-b border-orange-200 px-4 py-3 text-sm">
-            讲解语言
-            <select aria-label="讲解语言" className="rounded-lg border border-orange-200 bg-white px-3 py-2" value={explanationLanguage} onChange={event=>{
-              controller.current?.abort();setBusy(false);lastAction.current=null;
-              setWordAnswer(null);setAnswer(null);setHistory([]);setError("");setStatus("");setRevealed([]);setResponses({});
-              setExplanationLanguage(event.target.value);
-            }}><option value="Chinese">中文</option><option value="English">English</option><option value="Spanish">Español</option></select>
-          </label>
-          <nav className="flex flex-wrap gap-1 border-b border-orange-200 p-3">
+          <nav className="flex flex-wrap gap-1 border-b border-border p-3">
             {[
               ["ai", "AI 阅读"],
-              ["dictionary", "查词"],
               ["notes", "笔记"],
               ["search", "书内搜索"],
               ["settings", "设置"],
             ].map(([id, label]) => (
               <button
                 key={id}
-                className={`${button} ${tab === id ? "bg-orange-200" : ""}`}
+                className={`${button} ${tab === id ? "bg-muted" : ""}`}
                 onClick={() => {
                   controller.current?.abort();
                   setBusy(false);
@@ -284,7 +251,7 @@ export default function ReadingTools({
           </nav>
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             {selection && (
-              <blockquote className="max-h-32 overflow-y-auto border-l-2 border-orange-500 pl-3 text-sm leading-relaxed">
+              <blockquote className="max-h-32 overflow-y-auto border-l-2 border-primary pl-3 text-sm leading-relaxed">
                 {selection.text}
               </blockquote>
             )}
@@ -372,7 +339,7 @@ export default function ReadingTools({
                     句法详解
                   </button>
                 </div>
-                <p className="text-xs text-orange-800">
+                <p className="text-xs text-muted-foreground">
                   回顾和自测仅针对当前已加载章节或 PDF 页
                   {(selection?.chapterText?.length || 0) > 24000
                     ? "的前 24,000 字符"
@@ -380,8 +347,8 @@ export default function ReadingTools({
                   ；答案依据本段及相邻上下文。
                 </p>
                 {answer && (
-                  <div className="space-y-3 rounded-xl bg-white p-4">
-                    {(answer.provider || answer.model) && <p className="text-xs text-orange-700">本次模型：{answer.provider || "未知服务"} · {answer.model || "未知模型"}</p>}
+                  <div className="space-y-3 rounded-xl bg-card p-4">
+                    {(answer.provider || answer.model) && <p className="text-xs text-primary">本次模型：{answer.provider || "未知服务"} · {answer.model || "未知模型"}</p>}
                     <p className="whitespace-pre-wrap text-sm leading-7">
                       {answer.questions?.length
                         ? "先作答，再展开参考答案。"
@@ -390,7 +357,7 @@ export default function ReadingTools({
                     {answer.citations?.map((c, i) => (
                       <button
                         key={i}
-                        className="block text-left text-xs text-orange-700 underline"
+                        className="block text-left text-xs text-primary underline"
                         onClick={() => onQuote(c.quote)}
                       >
                         原文依据：{c.quote}
@@ -399,7 +366,7 @@ export default function ReadingTools({
                     {answer.questions?.map((q, i) => (
                       <div
                         key={i}
-                        className="space-y-2 border-t border-orange-100 pt-3"
+                        className="space-y-2 border-t border-border pt-3"
                       >
                         <p>
                           {i + 1}. {q.question}
@@ -423,7 +390,7 @@ export default function ReadingTools({
                           <>
                             <p className="text-sm">{q.answer}</p>
                             <button
-                              className="text-sm text-orange-700 underline"
+                              className="text-sm text-primary underline"
                               onClick={() => onQuote(q.quote)}
                             >
                               {q.quote}
@@ -487,13 +454,7 @@ export default function ReadingTools({
                   className="flex gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void perform(async (signal) => {
-                      const data = await readingRequest(
-                        `/api/dictionary?word=${encodeURIComponent(word.trim().normalize("NFC"))}&language=${sourceLanguage}`,
-                        { signal },
-                      );
-                      if (!signal.aborted) setDictionary(data);
-                    });
+                    lookupWord(word);
                   }}
                 >
                   <input
@@ -515,15 +476,27 @@ export default function ReadingTools({
                   <button className={button} disabled={!word.trim() || busy}>查词</button>
                 </form>
                 <button type="button" className={button} disabled={!word.trim()} onClick={()=>{setError("");void speakInBrowser(word.trim(),sourceLanguage).catch(error=>setError(error.message));}}>朗读单词</button>
+                {wordAnswer && (
+                  <div className="rounded-xl bg-card p-4">
+                    <p className="text-xs text-primary">
+                      AI 生成 · {wordAnswer.word} · 结合所选原文
+                    </p>
+                    {(wordAnswer.answer.provider || wordAnswer.answer.model) && <p className="mt-2 text-xs text-primary">本次模型：{wordAnswer.answer.provider || "未知服务"} · {wordAnswer.answer.model || "未知模型"}</p>}
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7">
+                      {wordAnswer.answer.answer}
+                    </p>
+                  </div>
+                )}
                 {dictionary && (
-                  <div className="space-y-3 rounded-xl bg-white p-4">
+                  <details className="space-y-3 rounded-xl bg-card p-4">
+                    <summary className="cursor-pointer text-sm font-semibold">原始词典参考（{dictionary.definitionLanguage === 'es' ? '西语' : '英语'}）</summary>
                     <h3 className="text-xl font-bold">
                       {dictionary.word}{" "}
                       <span className="text-sm font-normal">
                         {dictionary.phonetic}
                       </span>
                     </h3>
-                    <p className="text-xs text-orange-700">词典 · {sourceLanguage === "es" ? "西班牙语词条" : "英语词条"}{dictionary.definitionLanguage === "en" ? " · 英文释义" : ""}</p>
+                    <p className="text-xs text-primary">词典 · {sourceLanguage === "es" ? "西班牙语词条" : "英语词条"}{dictionary.definitionLanguage === "en" ? " · 英文释义" : ""}</p>
                     {dictionary.audioUrl && <audio controls src={dictionary.audioUrl} className="max-w-full"/>}
                     {dictionary.meanings.map((m, i) => (
                       <section key={i}>
@@ -534,7 +507,7 @@ export default function ReadingTools({
                           <p key={j} className="mt-2 text-sm">
                             {d.definition}
                             {d.example && (
-                              <em className="mt-1 block text-orange-800">
+                              <em className="mt-1 block text-muted-foreground">
                                 {d.example}
                               </em>
                             )}
@@ -542,7 +515,7 @@ export default function ReadingTools({
                         ))}
                       </section>
                     ))}
-                    {dictionary.attribution && <p className="text-xs text-orange-800">{dictionary.attribution}</p>}
+                    {dictionary.attribution && <p className="text-xs text-muted-foreground">{dictionary.attribution}</p>}
                     {dictionary.licenseUrl && <a href={dictionary.licenseUrl} target="_blank" rel="noreferrer" className="block text-xs underline">CC BY-SA 许可</a>}
                     {dictionary.sourceUrl && (
                       <a
@@ -554,55 +527,16 @@ export default function ReadingTools({
                         {dictionary.source || "词典来源"}
                       </a>
                     )}
-                  </div>
+                  </details>
                 )}
                 <button
                   className={button}
                   disabled={!word.trim() || busy}
-                  onClick={() =>
-                    void perform(async (signal) => {
-                      const result = await readingRequest(
-                        "/api/reading-assistant",
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          signal,
-                          body: JSON.stringify({
-                            documentId,
-                            mode: "word",
-                            text: (selection?.text || word).slice(0, 24000),
-                            question: `Explain the word: ${word}`,
-                            previousText: selection?.previousText?.slice(
-                              0,
-                              6000,
-                            ),
-                            nextText: selection?.nextText?.slice(0, 6000),
-                            level: readingLevel,
-                            language: explanationLanguage,
-          sourceLanguage,
-                          }),
-                        },
-                      );
-                      if (!signal.aborted)
-                        setWordAnswer({ word: word.trim(), answer: result });
-                    })
-                  }
-                >
-                  AI 语境释义
-                </button>
-                {wordAnswer && (
-                  <div className="rounded-xl bg-white p-4">
-                    <p className="text-xs text-orange-700">
-                      AI 生成 · {wordAnswer.word} · 结合所选原文
-                    </p>
-                    {(wordAnswer.answer.provider || wordAnswer.answer.model) && <p className="mt-2 text-xs text-orange-700">本次模型：{wordAnswer.answer.provider || "未知服务"} · {wordAnswer.answer.model || "未知模型"}</p>}
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7">
-                      {wordAnswer.answer.answer}
-                    </p>
-                  </div>
-                )}
+                  onClick={() => lookupWord(word)}
+                >重新解析语境</button>
+
                 {!dictionary && (
-                  <p className="text-xs text-orange-800">
+                  <p className="text-xs text-muted-foreground">
                     词典释义暂缺。仍可保存单词与原句，稍后补查；AI 释义会单独标明。
                   </p>
                 )}
@@ -616,7 +550,7 @@ export default function ReadingTools({
                       JSON.stringify({
                         context: [
                           selection?.previousText,
-                          selection?.text,
+                          selection?.contextText || selection?.text,
                           selection?.nextText,
                         ]
                           .filter(Boolean)
@@ -679,7 +613,7 @@ export default function ReadingTools({
                 {results.map((r, i) => (
                   <button
                     key={i}
-                    className="block w-full rounded-xl bg-white p-3 text-left text-sm"
+                    className="block w-full rounded-xl bg-card p-3 text-left text-sm"
                     onClick={() => {
                       onJump(r.location);
                       close();
@@ -728,9 +662,9 @@ export default function ReadingTools({
                 {entries.map((item) => (
                   <article
                     key={item.id}
-                    className="space-y-2 rounded-xl bg-white p-3"
+                    className="space-y-2 rounded-xl bg-card p-3"
                   >
-                    <p className="text-xs text-orange-700">
+                    <p className="text-xs text-primary">
                       {(
                         {
                           note: "笔记",
@@ -771,7 +705,7 @@ export default function ReadingTools({
                               window.setTimeout(() => {
                                 setAnswer(saved.answer);
                                 setHistory(saved.history || []);
-                                setTab("ai");
+                                setTab(initialTab);
                               }, 0);
                             } catch {
                               setError("保存的解释无法读取");
@@ -801,7 +735,7 @@ export default function ReadingTools({
                 <label className="block text-sm">
                   字号 {fontSize}px
                   <input
-                    className="mt-3 block w-full accent-orange-600"
+                    className="mt-3 block w-full accent-primary"
                     type="range"
                     min="14"
                     max="30"
@@ -814,7 +748,7 @@ export default function ReadingTools({
                 <label className="block text-sm">
                   行距 {lineHeight.toFixed(1)}
                   <input
-                    className="mt-3 block w-full accent-orange-600"
+                    className="mt-3 block w-full accent-primary"
                     type="range"
                     min="1.3"
                     max="2.5"

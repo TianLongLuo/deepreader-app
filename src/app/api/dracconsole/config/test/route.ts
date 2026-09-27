@@ -1,11 +1,12 @@
+import { assertSameOrigin } from '@/lib/auth-guard';
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { decrypt } from '@/lib/crypto';
 import { appConfigService } from '@/server/app-config/app-config.service';
 import { MimoProvider } from '@/server/ai/mimo.provider';
 
-export async function POST() {
-  try { await requireAdmin(); }
+export async function POST(req: Request) {
+  try { assertSameOrigin(req); await requireAdmin(); }
   catch { return NextResponse.json({error:'Forbidden'}, {status:403}); }
   try {
     const config = await appConfigService.getConfig();

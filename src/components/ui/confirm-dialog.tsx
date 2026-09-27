@@ -1,0 +1,6 @@
+'use client';
+import * as Dialog from '@radix-ui/react-dialog';
+import type {ReactNode} from 'react';
+export function ConfirmDialog({open,onClose,title,children,onConfirm,busy=false,confirmLabel='确认'}:{open:boolean;onClose:()=>void;title:string;children:ReactNode;onConfirm:()=>void;busy?:boolean;confirmLabel?:string}){
+ return <Dialog.Root open={open} onOpenChange={v=>{if(!v&&!busy)onClose();}}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[90] bg-black/30"/><Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 z-[100] w-[min(420px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 text-foreground shadow-xl"><Dialog.Title className="mb-3 text-lg font-semibold">{title}</Dialog.Title><div className="text-sm leading-6 text-muted-foreground">{children}</div><div className="mt-6 flex justify-end gap-2"><button disabled={busy} className="native-action" onClick={onClose}>取消</button><button disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-40" onClick={onConfirm}>{busy?'处理中…':confirmLabel}</button></div></Dialog.Content></Dialog.Portal></Dialog.Root>;
+}

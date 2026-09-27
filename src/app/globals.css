@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-inter);
-  
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -62,113 +62,31 @@
 }
 
 @layer base {
-  :root {
-    --background: 33 100% 96%;
-    --foreground: 24 83% 14%;
-    --card: 33 100% 98%;
-    --card-foreground: 24 83% 14%;
-    --popover: 33 100% 98%;
-    --popover-foreground: 24 83% 14%;
-    --primary: 24 95% 53%; /* Cozy kitten orange */
-    --primary-foreground: 33 100% 98%;
-    --secondary: 35 100% 91%;
-    --secondary-foreground: 24 83% 20%;
-    --muted: 32 100% 93%;
-    --muted-foreground: 25 44% 40%;
-    --accent: 29 100% 88%;
-    --accent-foreground: 24 83% 18%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 31 90% 82%;
-    --input: 31 90% 82%;
-    --ring: 24 95% 53%;
-    --radius: 1rem;
-  }
+ :root { --background:240 5% 96%; --foreground:240 3% 12%; --card:0 0% 100%; --card-foreground:240 3% 12%; --popover:0 0% 100%; --popover-foreground:240 3% 12%; --primary:211 100% 50%; --primary-foreground:0 0% 100%; --secondary:240 5% 93%; --secondary-foreground:240 3% 12%; --muted:240 5% 93%; --muted-foreground:240 4% 41%; --accent:211 100% 96%; --accent-foreground:211 100% 40%; --destructive:0 73% 48%; --destructive-foreground:0 0% 100%; --border:240 5% 87%; --input:240 5% 82%; --ring:211 100% 50%; --radius:.75rem; }
+ .dark { --background:240 4% 9%; --foreground:240 5% 96%; --card:240 4% 14%; --card-foreground:240 5% 96%; --popover:240 4% 16%; --popover-foreground:240 5% 96%; --primary:213 100% 70%; --primary-foreground:240 4% 9%; --secondary:240 4% 20%; --secondary-foreground:240 5% 96%; --muted:240 4% 20%; --muted-foreground:240 5% 71%; --accent:213 30% 24%; --accent-foreground:213 100% 80%; --destructive:0 80% 68%; --destructive-foreground:240 4% 9%; --border:240 4% 25%; --input:240 4% 32%; --ring:213 100% 70%; }
+ * { @apply border-border; }
+ body { @apply bg-background text-foreground; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+ button,select { -webkit-tap-highlight-color:transparent; }
+ button:not(:disabled),summary { cursor:pointer; }
+ :focus-visible { outline:2px solid hsl(var(--ring));outline-offset:3px; }
+ input,select,textarea { color:inherit; }
+ select { color-scheme:inherit; }
+}
+.no-scrollbar { scrollbar-width:none; }
+.no-scrollbar::-webkit-scrollbar { display:none; }
+.glass { background:hsl(var(--card)/.94);border:1px solid hsl(var(--border));backdrop-filter:blur(12px); }
+.page-shell,.cat-page-shell { position:relative;min-height:100%;padding:36px clamp(20px,4vw,56px);margin-inline:auto; }
+.cat-heading {color:hsl(var(--foreground));}
+.cat-muted {color:hsl(var(--muted-foreground));}
+.native-panel {box-shadow:0 16px 64px #0002,0 2px 8px #0001;}
+.native-field {width:100%;border:1px solid hsl(var(--input));border-radius:8px;background:hsl(var(--card));padding:10px 12px;color:hsl(var(--foreground));font-size:14px;}
+.native-action {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:6px 12px;border-radius:8px;background:hsl(var(--secondary));font-size:13px;font-weight:500;}
+.native-action:hover {background:hsl(var(--muted));}
+.ui-motion {transition:opacity 120ms ease,transform 160ms cubic-bezier(.2,.8,.2,1);}
+@media(prefers-reduced-motion:reduce){.ui-motion{transition:none!important;animation:none!important;}}
+@keyframes panel-appear {from{opacity:0;transform:translateY(3px) scale(.99)}to{opacity:1;transform:none}}
+[data-study-panel] {animation:panel-appear 110ms ease-out;transform-origin:top center;}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}}
+@media(pointer:coarse){button,select,summary{min-height:44px;}[data-study-panel] header button{min-width:44px;}}
 
-  .dark {
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 259 87% 75%; /* Lighter purple in dark mode */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 259 87% 75%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(circle at 15% 18%, rgba(251, 191, 36, 0.22), transparent 28%),
-      radial-gradient(circle at 85% 12%, rgba(251, 146, 60, 0.20), transparent 30%),
-      radial-gradient(circle at 52% 100%, rgba(253, 186, 116, 0.25), transparent 36%);
-    background-attachment: fixed;
-  }
-}
-
-/* Hide scrollbar but keep scroll functionality */
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-/* Custom UI utilities for aesthetic design */
-.glass {
-  @apply border border-orange-200/80 bg-white/75 shadow-xl shadow-orange-200/40 backdrop-blur-xl;
-}
-.dark .glass {
-  @apply bg-black/40 backdrop-blur-md border border-white/10;
-}
-
-.cat-page-shell {
-  @apply relative min-h-full overflow-hidden px-6 py-8 md:px-8;
-}
-
-.cat-page-shell::before {
-  content: '🐾';
-  position: fixed;
-  top: 1.25rem;
-  right: 2rem;
-  z-index: 0;
-  font-size: 3rem;
-  opacity: 0.22;
-  pointer-events: none;
-}
-
-.cat-page-shell::after {
-  content: '🧶';
-  position: fixed;
-  left: 17rem;
-  bottom: 1.5rem;
-  z-index: 0;
-  font-size: 3rem;
-  opacity: 0.20;
-  pointer-events: none;
-}
-
-.cat-heading {
-  @apply text-orange-950;
-}
-
-.cat-muted {
-  @apply text-orange-900/65;
-}
+nav a[aria-current="page"]{background:hsl(var(--muted));color:hsl(var(--foreground));}

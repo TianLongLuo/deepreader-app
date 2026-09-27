@@ -1,3 +1,4 @@
+import AppearanceSettings from '@/components/settings/appearance-settings';
 import { requireAuth } from '@/lib/auth';
 import AISettingsForm from '@/components/settings/ai-settings-form';
 import { aiSettingsService } from '@/server/config/ai-settings.service';
@@ -8,21 +9,7 @@ export default async function AISettingsPage() {
   const user = await requireAuth();
   const access = await appConfigService.getUserAIAccess(user.email);
 
-  if (!access.canManageOwnAiSettings) {
-    redirect('/documents');
-  }
+  const initialData = access.canManageOwnAiSettings ? await aiSettingsService.getSettings(user.workspaceId!) : null;
 
-  const initialData = await aiSettingsService.getSettings(user.workspaceId!);
-
-  return (
-    <div className="cat-page-shell mx-auto max-w-4xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="relative z-10 rounded-[2rem] border border-orange-200/70 bg-white/60 p-6 shadow-xl shadow-orange-200/30 backdrop-blur-xl">
-        <div className="mb-3 text-4xl">🐱⚙️</div>
-        <h1 className="cat-heading mb-2 text-4xl font-black tracking-tight">AI Configuration</h1>
-        <p className="cat-muted font-medium">Tune the clever kitten that helps explain your books.</p>
-      </div>
-      
-      <AISettingsForm initialData={initialData || {}} />
-    </div>
-  );
+  return <div className="page-shell max-w-4xl space-y-7"><header><h1 className="text-3xl font-semibold tracking-tight">设置</h1><p className="mt-2 text-sm text-muted-foreground">按照你的习惯，调整阅读空间。</p></header><AppearanceSettings/>{access.canManageOwnAiSettings&&<section className="space-y-4"><h2 className="text-xl font-semibold">AI 服务</h2><AISettingsForm initialData={initialData||{}}/></section>}</div>;
 }

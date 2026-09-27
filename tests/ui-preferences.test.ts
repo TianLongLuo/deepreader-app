@@ -1,0 +1,6 @@
+import {expect,it} from 'vitest';
+import {readUIPreferences} from '@/lib/ui-preferences';
+it('migrates old defaults once and preserves custom sizes',()=>{const p=readUIPreferences({explanationPanelWidth:620,explanationPanelHeight:760});expect(p.panels.word).toEqual({width:360,height:480});const custom={...p,panels:{...p.panels,word:{width:410,height:520}}};expect(readUIPreferences(custom).panels.word).toEqual(custom.panels.word);});
+it('recovers from corrupt preferences',()=>{for(const raw of [null,'broken',[],{version:1,panels:{word:{width:NaN}}}])expect(readUIPreferences(raw).panels.word.width).toBe(360);});
+it('validates theme without accepting script data',()=>{expect(readUIPreferences({theme:'dark'}).theme).toBe('dark');expect(readUIPreferences({theme:'<script>'}).theme).toBe('system');});
+it('migrates legacy panel dimensions only when new preferences are absent',async()=>{const {migrateUIPreferences}=await import('@/lib/ui-preferences');expect(migrateUIPreferences(null,{state:{explanationPanelWidth:620,explanationPanelHeight:760}}).panels.word).toEqual({width:620,height:760});expect(migrateUIPreferences({panels:{word:{width:350,height:460}}},{state:{explanationPanelWidth:620,explanationPanelHeight:760}}).panels.word).toEqual({width:350,height:460});});

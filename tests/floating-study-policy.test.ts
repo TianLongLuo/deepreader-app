@@ -1,0 +1,2 @@
+import {expect,it} from 'vitest';import {shouldDismiss} from '@/components/reader/floating-study-policy';
+it('keeps pinned panels during navigation but lets Escape close them',()=>{expect(shouldDismiss('scroll',true)).toBe(false);expect(shouldDismiss('outside',true)).toBe(false);expect(shouldDismiss('book-change',true)).toBe(true);expect(shouldDismiss('escape',true)).toBe(true);expect(shouldDismiss('turn',false)).toBe(true);});

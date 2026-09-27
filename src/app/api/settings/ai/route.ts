@@ -11,7 +11,7 @@ export async function GET() {
 
     if (!access.canManageOwnAiSettings) {
       return NextResponse.json(
-        { error: 'AI settings are currently available only to admin@qq.com.' },
+        { error: 'AI settings are currently available only to 管理员.' },
         { status: 403 }
       );
     }
@@ -34,7 +34,7 @@ export async function PUT(req: Request) {
 
     if (!access.canManageOwnAiSettings) {
       return NextResponse.json(
-        { error: 'AI settings are currently available only to admin@qq.com.' },
+        { error: 'AI settings are currently available only to 管理员.' },
         { status: 403 }
       );
     }
