@@ -12,6 +12,8 @@ export async function GET(req: Request) {
     await requireAuth();
     const language = new URL(req.url).searchParams.get("language") || "en";
     if (language !== "en" && language !== "es") return NextResponse.json({error:"Unsupported source language"}, {status:400});
+    const definitionLanguage=new URL(req.url).searchParams.get("definitionLanguage") || "en";
+    if(definitionLanguage!=="en"&&definitionLanguage!=="zh")return NextResponse.json({error:"Unsupported definition language"},{status:400});
     const word = (language === "es" ? spanishDictionaryWordSchema : dictionaryWordSchema).safeParse(
       new URL(req.url).searchParams.get("word"),
     );
@@ -20,7 +22,7 @@ export async function GET(req: Request) {
         { error: "请输入一个所选语言的单词（最多 64 个字符）" },
         { status: 400 },
       );
-    return NextResponse.json(await lookupDictionary(word.data, req.signal, language), {
+    return NextResponse.json(await lookupDictionary(word.data, req.signal, language, definitionLanguage), {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {

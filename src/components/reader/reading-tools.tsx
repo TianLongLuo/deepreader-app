@@ -135,11 +135,12 @@ export default function ReadingTools({
     void perform(async signal=>{
       const context=selection?.contextText || selection?.text || term;
       const [lexical,contextual] = await Promise.allSettled([
-        readingRequest(`/api/dictionary?word=${encodeURIComponent(term.trim().normalize('NFC'))}&language=${sourceLanguage}`,{signal}),
+        readingRequest(`/api/dictionary?word=${encodeURIComponent(term.trim().normalize('NFC'))}&language=${sourceLanguage}&definitionLanguage=${bilingualMode?'zh':'en'}`,{signal}),
         readingRequest('/api/reading-assistant',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({documentId,mode:'word',targetWord:term.trim(),text:context.slice(0,24000),previousText:selection?.previousText?.slice(0,6000),nextText:selection?.nextText?.slice(0,6000),question:`Explain the word: ${term}`,level:readingLevel,language:explanationLanguage,definitionMode:bilingualMode?'bilingual':'monolingual',sourceLanguage})})
       ]);
       if(signal.aborted)return;
       if(lexical.status==='fulfilled')setDictionary(lexical.value);
+      else setError(lexical.reason instanceof Error?lexical.reason.message:'所选语言的词典释义暂不可用。');
       if(contextual.status==='fulfilled')setWordAnswer({word:term.trim(),answer:contextual.value});
       else throw new Error('语境解析暂不可用，请检查 AI 配置后重试。词典结果若可用会保留。');
     });
@@ -489,14 +490,14 @@ export default function ReadingTools({
                 )}
                 {dictionary && (
                   <details className="space-y-3 rounded-xl bg-card p-4">
-                    <summary className="cursor-pointer text-sm font-semibold">原始词典参考（{dictionary.definitionLanguage === 'es' ? '西语' : '英语'}）</summary>
+                    <summary className="cursor-pointer text-sm font-semibold">原始词典参考（{dictionary.definitionLanguage === 'zh' ? '中文' : dictionary.definitionLanguage === 'es' ? '西语' : '英语'}）</summary>
                     <h3 className="text-xl font-bold">
                       {dictionary.word}{" "}
                       <span className="text-sm font-normal">
                         {dictionary.phonetic}
                       </span>
                     </h3>
-                    <p className="text-xs text-primary">词典 · {sourceLanguage === "es" ? "西班牙语词条" : "英语词条"}{dictionary.definitionLanguage === "en" ? " · 英文释义" : ""}</p>
+                    <p className="text-xs text-primary">词典 · {sourceLanguage === "es" ? "西班牙语词条" : "英语词条"}{dictionary.definitionLanguage === "zh" ? " · 中文释义" : " · 英文释义"}</p>
                     {dictionary.audioUrl && <audio controls src={dictionary.audioUrl} className="max-w-full"/>}
                     {dictionary.meanings.map((m, i) => (
                       <section key={i}>

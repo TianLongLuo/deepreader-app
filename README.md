@@ -23,3 +23,8 @@ npm run dev
 验证：`npm test`、`npx tsc --noEmit`、`npm run build`。
 
 词库许可及来源见 [NOTICE](public/dictionaries/NOTICE.txt)。
+
+### 词典与阅读界面
+- 本地英英 / 英中、西英 / 西中释义；语言选择与浮窗右上角联动。
+- 英中包含 400,468 个词头，西中包含 265,028 个词头（包含词形变化，非独立词根计数）。
+- 阅读工具栏支持一键收起和展开，并记住当前浏览器偏好。

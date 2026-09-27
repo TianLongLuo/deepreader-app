@@ -1,0 +1,24 @@
+name: Assemble reviewed Chinese dictionaries
+on:
+  push:
+    branches: [codex/chinese-dictionary-20260927]
+permissions:
+  contents: write
+jobs:
+  assemble:
+    if: contains(github.event.head_commit.message, '[assemble-chinese]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.9'
+      - name: Reproduce checksum-locked dictionaries and verify complete tree
+        run: python .migration/assemble.py
+      - name: Commit verified snapshot to staging branch only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Assemble verified Chinese dictionary snapshot"
+          git push origin HEAD:codex/chinese-dictionary-20260927
