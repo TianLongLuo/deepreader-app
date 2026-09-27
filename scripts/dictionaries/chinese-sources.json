@@ -1,0 +1,18 @@
+{
+  "version": "chinese-local-2026-09-27",
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "upstream": "https://kaikki.org/zhwiktionary/",
+  "source": {
+    "url": "https://kaikki.org/dictionary/downloads/zh/zh-extract.jsonl.gz",
+    "sha256": "ff631621546a224b0bab6f28953c8a324657043e2a7c5581e358bd38162ecd3e"
+  },
+  "format": "json",
+  "definitionLanguage": "zh",
+  "englishSource": {
+    "url": "https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b/ecdict.csv",
+    "sha256": "1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf",
+    "upstream": "https://github.com/skywind3000/ECDICT",
+    "license": "https://opensource.org/license/mit",
+    "commit": "bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b"
+  }
+}

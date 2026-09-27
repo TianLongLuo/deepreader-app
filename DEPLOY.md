@@ -48,7 +48,7 @@ npm run build
 npm run start
 ```
 部署必须保留 `public/` 和 `scripts/dictionaries/sources.json` 等工程文件，不要只复制 `.next/`。
-构建自动校验 512 个词库分片。日志在 `logs/`，停止/启动使用配套脚本。大型多用户站点可另行规划数据库和进程管理扩容，本版默认单机 SQLite。
+构建自动校验 1024 个词库分片。日志在 `logs/`，停止/启动使用配套脚本。大型多用户站点可另行规划数据库和进程管理扩容，本版默认单机 SQLite。
 
 ## 数据来源
 词库来自 Wiktionary / Compact Dictionaries，许可、来源、下载校验及变更声明见 `public/dictionaries/NOTICE.txt`。更新词库使用 `scripts/dictionaries/import.py`，日常构建和查词不下载外部词典。缺失的音标不编造；外部录音未打包。
@@ -60,3 +60,8 @@ npm run start
 
 ### 从曾跟踪运行配置的旧版本升级
 旧仓库曾把 `storage/system/app-config.json`（含加密密钥配置及预览）纳入 Git；本版本停止跟踪该文件。**拉取前先把此文件备份到仓库外，拉取后恢复到原路径，再启动服务**，否则未修改的旧跟踪文件可能被 Git 删除。新安装不自带任何模型密钥。历史提交中的旧配置仍存在，建议在提供商后台轮换曾写入仓库的密钥，然后在管理员后台重新保存。
+
+## 中文释义词库
+英中采用 ECDICT（MIT），西中采用中文维基词典 / Kaikki（CC BY-SA 4.0）。词库已随仓库提供，查词不调用在线词典或 AI。切换浮窗右上角的英中/西中释义即可查询中文；未收录时明确提示，不会静默显示英文。词头数包含词形变化，并非独立词根数量。原始中文可能包含简体及繁体。导入来源、校验和见 `scripts/dictionaries/chinese-sources.json`，许可见 `public/dictionaries/NOTICE.txt`。
+
+阅读顶部工具栏可收起，右上角保留展开按钮；状态保存在当前浏览器，与账号数据迁移无关。

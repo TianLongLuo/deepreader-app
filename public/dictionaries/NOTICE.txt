@@ -23,3 +23,21 @@ not a claim about the age of the original Wiktionary dump.
 
 The English and Spanish headwords both have English dictionary definitions.
 AI context interpretation/translation is separate and is not dictionary data.
+
+Additional Chinese-definition dictionaries (chinese-local-2026-09-27):
+English → Chinese: ECDICT, Copyright (c) 2025 Linwei, MIT License.
+Upstream: https://github.com/skywind3000/ECDICT
+Full license: ECDICT-LICENSE.txt. Dataset pinned by commit and SHA-256 in
+scripts/dictionaries/chinese-sources.json.
+Spanish → Chinese: Chinese Wiktionary contributors, CC BY-SA 4.0.
+Source: https://zh.wiktionary.org/ ; extraction: https://kaikki.org/zhwiktionary/
+License: https://creativecommons.org/licenses/by-sa/4.0/
+Copyright: https://zh.wiktionary.org/wiki/Wiktionary:版权信息
+Changes by DeepReader: source-language filtering, Latin headword normalization,
+Chinese-gloss filtering, deduplication and hash sharding. Original Chinese text
+is retained (may contain both simplified and traditional characters). No AI
+translation, audio, quotations, or images are bundled. Per-entry Wiktionary
+links and attribution are returned by the API. Chinese Wiktionary-derived
+shards and their adaptations are distributed under CC BY-SA 4.0.
+Reproduce with scripts/dictionaries/import-chinese.py and the checksum-locked
+source downloads; normal build and runtime never download dictionary data.

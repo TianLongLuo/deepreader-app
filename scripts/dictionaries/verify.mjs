@@ -24,3 +24,20 @@ for(const [lang,word] of [['en','occasion'],['es','niño'],['es','casa']]){
  const entries=JSON.parse(gunzipSync(readFileSync(new URL(`${lang}/${id}.bin`,base))));
  if(!entries[word]?.[1]||!entries[word]?.[3]?.length)throw Error(`Missing reference word: ${word}`);
 }
+
+const chinese=JSON.parse(readFileSync(new URL('chinese-sources.json',import.meta.url),'utf8'));
+const chineseBase=new URL(`public/dictionaries/${chinese.version}/`,root);
+const chineseManifest=JSON.parse(readFileSync(new URL('manifest.json',chineseBase),'utf8'));
+if(chineseManifest.source.sha256!==chinese.source.sha256||chineseManifest.englishSource.sha256!==chinese.englishSource.sha256)throw Error('Chinese dictionary source mismatch');
+for(const lang of ['en','es']){
+ const stats=chineseManifest.languages[lang];let count=0;
+ if(!stats||Object.keys(stats.shards).length!==256||stats.words<10000)throw Error('Incomplete Chinese dictionary');
+ for(const [key,info] of Object.entries(stats.shards)){
+  const bytes=readFileSync(new URL(`${lang}/${key}.json`,chineseBase));
+  if(bytes.length!==info.bytes||createHash('sha256').update(bytes).digest('hex')!==info.sha256)throw Error(`Chinese shard integrity error: ${lang}/${key}`);
+  const entries=JSON.parse(bytes.toString('utf8'));count+=Object.keys(entries).length;
+  if(Object.keys(entries).length!==info.words||Object.values(entries).some(r=>!Array.isArray(r)||!r[3]?.length||r[3].some(d=>typeof d!=='string'||!/[\u3400-\u9fff]/.test(d))))throw Error('Invalid Chinese dictionary record');
+ }
+ if(count!==stats.words)throw Error('Chinese headword count mismatch');
+ console.log(`${lang} → Chinese: ${count} local headwords verified`);
+}

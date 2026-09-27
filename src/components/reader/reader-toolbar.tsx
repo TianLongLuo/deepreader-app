@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import {useUIPreferences} from '@/hooks/use-ui-preferences';
 import {Search,Settings,ArrowLeft,NotebookPen} from 'lucide-react';
 import type { ReactNode } from 'react';
-import { BookmarkPlus, ChevronLeft, ChevronRight, List, Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronUp, ChevronDown, BookmarkPlus, ChevronLeft, ChevronRight, List, Maximize2, Minimize2 } from 'lucide-react';
 
 export type ReaderToolbarProps = {
   title: string;
@@ -38,6 +39,8 @@ export default function ReaderToolbar({
   bookmarkDisabled = false,
   children,
 }: ReaderToolbarProps) {
+  const {toolbarCollapsed,setToolbarCollapsed}=useUIPreferences();
+  if(toolbarCollapsed)return <header className="relative z-30 h-0 w-full shrink-0" aria-label="已收起的阅读工具栏"><button type="button" aria-label="展开阅读工具栏" title="展开阅读工具栏" aria-expanded={false} className="absolute right-3 top-2 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary" onClick={()=>setToolbarCollapsed(false)}><ChevronDown size={17}/></button></header>;
   return (
     <header className="relative z-20 w-full shrink-0 border-b border-border bg-card text-foreground   ">
       <div className="flex min-w-0 flex-wrap items-center gap-2 py-3 pl-14 pr-3 sm:pr-5">
@@ -74,6 +77,7 @@ export default function ReaderToolbar({
             {immersive ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
             <span className="hidden sm:inline">{immersive ? '退出全屏' : '全屏'}</span>
           </button>
+          <button type="button" className={controlClass} aria-label="收起阅读工具栏" title="收起阅读工具栏" aria-expanded={true} onClick={()=>setToolbarCollapsed(true)}><ChevronUp size={17}/></button>
         </div>
       </div>
       {children && (
