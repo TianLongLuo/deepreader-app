@@ -1,0 +1,25 @@
+DeepReader self-hosted English and Spanish dictionary data
+
+Source: Wiktionary contributors (https://en.wiktionary.org/)
+Extraction: Wiktextract / Kaikki.org (https://kaikki.org/dictionary/)
+Compact preprocessing: Teal Dulcet, Compact Dictionaries
+https://github.com/tdulcet/compact-dictionaries
+
+The upstream dictionary declares CC BY-SA 3.0 / GFDL dual licensing.
+This distribution uses Creative Commons Attribution-ShareAlike 3.0 Unported:
+https://creativecommons.org/licenses/by-sa/3.0/
+See CC-BY-SA-3.0.txt for the license. No endorsement is implied.
+
+DeepReader changes: NFC/lowercase lookup keys; Latin single-word filtering;
+case variants merged; parts of speech, definitions and IPA retained; hashed,
+gzip-compressed JSON shards. Omitted fields include synonyms, alternate forms,
+Wikipedia links and external audio. No audio files are included or hotlinked.
+
+The same CC BY-SA 3.0 license applies to these adapted dictionary data files.
+Each API result includes a link to the original Wiktionary entry and credits.
+The versioned manifest records download URLs, SHA-256 checksums, word counts,
+IPA counts and shard checksums. The version date is the download/import date,
+not a claim about the age of the original Wiktionary dump.
+
+The English and Spanish headwords both have English dictionary definitions.
+AI context interpretation/translation is separate and is not dictionary data.

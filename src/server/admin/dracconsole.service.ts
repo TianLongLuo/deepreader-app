@@ -8,7 +8,6 @@ type ConsoleUserRow = {
   name: string | null;
   role: string;
   createdAt: Date;
-  passwordHash: string;
   lastLoginAt: Date | null;
   deepseekCalls: number;
   storageBytes: number;
@@ -80,7 +79,6 @@ export class DracConsoleService {
           name: user.name,
           role: user.role,
           createdAt: user.createdAt,
-          passwordHash: user.passwordHash,
           lastLoginAt: user.sessions[0]?.createdAt ?? null,
           deepseekCalls,
           storageBytes: user.documents.reduce(

@@ -5,20 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-all active:scale-[0.98]",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-orange-500 text-white shadow-lg shadow-orange-200 hover:-translate-y-0.5 hover:bg-orange-600 hover:shadow-xl",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
         outline:
-          "border border-orange-200 bg-white/70 text-orange-900 hover:bg-orange-100 hover:text-orange-950",
+          "border border-border bg-card text-foreground hover:bg-muted",
         secondary:
-          "bg-orange-100 text-orange-900 hover:bg-orange-200",
-        ghost: "text-orange-800 hover:bg-orange-100 hover:text-orange-950",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        glass: "glass text-orange-950 hover:bg-white/90 dark:hover:bg-black/60",
+        glass: "glass text-foreground hover:bg-muted",
       },
       size: {
         default: "h-10 px-4 py-2",

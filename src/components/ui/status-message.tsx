@@ -1,0 +1,2 @@
+import type {ReactNode} from 'react';
+export function StatusMessage({kind,children,onRetry}:{kind:'error'|'info'|'success';children:ReactNode;onRetry?:()=>void}){return <div role={kind==='error'?'alert':'status'} className={`rounded-lg border p-3 text-sm ${kind==='error'?'border-destructive/25 text-destructive':'border-border text-muted-foreground'}`}>{children}{onRetry&&<button className="ml-3 underline" onClick={onRetry}>重试</button>}</div>;}

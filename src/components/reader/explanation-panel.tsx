@@ -240,7 +240,7 @@ const STRUCTURE_TOKEN_STYLES: Record<
   },
   subject_core: {
     label: '主语核心',
-    className: 'text-amber-800 decoration-amber-500 dark:text-amber-300',
+    className: 'text-muted-foreground decoration-amber-500 ',
     underline: true,
   },
   verb_modifier: {
@@ -511,7 +511,7 @@ function OrderedStructureLine({
   }
 
   if (tokens.length === 0) {
-    return <p className="text-[15px] leading-8 text-orange-950">{sourceText}</p>;
+    return <p className="text-[15px] leading-8 text-foreground">{sourceText}</p>;
   }
 
   const elements: ReactNode[] = [];
@@ -529,7 +529,7 @@ function OrderedStructureLine({
         key={`token-${index}`}
         title={token.label}
         onClick={() => onTokenClick?.(sentenceIndex, { start: token.start, end: token.end })}
-        className={`font-medium cursor-pointer transition-colors hover:bg-orange-200/40 ${
+        className={`font-medium cursor-pointer transition-colors hover:bg-muted ${
           STRUCTURE_TOKEN_STYLES[token.role].underline
             ? 'underline decoration-2 underline-offset-4'
             : ''
@@ -546,7 +546,7 @@ function OrderedStructureLine({
   }
 
   return (
-    <p className="text-[15px] leading-8 text-orange-950">
+    <p className="text-[15px] leading-8 text-foreground">
       {elements}
     </p>
   );
@@ -623,7 +623,7 @@ function BilingualTextBlock({
     <div className={className}>
       <p className="whitespace-pre-line">{split.primary || value}</p>
       {bilingualMode && secondaryText ? (
-        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-orange-900/60">
+        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground">
           {secondaryText}
         </p>
       ) : null}
@@ -637,7 +637,7 @@ function SkeletonBlock({ className, lines = 2 }: { className?: string; lines?: n
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}
-          className="h-3 rounded bg-gradient-to-r from-orange-100 via-orange-200/60 to-orange-100 bg-[length:200%_100%]"
+          className="h-3 rounded bg-card    bg-[length:200%_100%]"
           style={{ width: i === lines - 1 ? '70%' : '100%' }}
         />
       ))}
@@ -684,17 +684,17 @@ function StructureLearningPath({
       {steps.map((step) => (
         <div
           key={step.label}
-          className="rounded-xl border border-orange-200/80 bg-orange-50/70 px-3 py-1.5 text-orange-950 shadow-sm"
+          className="rounded-xl border border-border bg-card px-3 py-1.5 text-foreground shadow-sm"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-orange-900/65">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-foreground">
               {step.label}
             </div>
-            <div className="text-[10px] leading-relaxed text-orange-900/65">
+            <div className="text-[10px] leading-relaxed text-foreground">
               {step.hint}
             </div>
           </div>
-          <div className="mt-1 text-xs font-medium leading-relaxed text-orange-950/90">
+          <div className="mt-1 text-xs font-medium leading-relaxed text-foreground">
             {step.value}
           </div>
         </div>
@@ -707,7 +707,7 @@ function StructureLegend({ bilingualMode }: { bilingualMode: boolean }) {
   const items = [
     {
       label: bilingualMode ? '主语 / Subject' : 'Subject',
-      className: 'bg-amber-400',
+      className: 'bg-primary',
     },
     {
       label: bilingualMode ? '动词 / Verb' : 'Verb',
@@ -720,7 +720,7 @@ function StructureLegend({ bilingualMode }: { bilingualMode: boolean }) {
   ];
 
   return (
-    <div className="pointer-events-none absolute bottom-3 left-4 z-30 rounded-xl border border-orange-200/90 bg-white/90 px-3 py-2 text-[10px] text-orange-900/70 shadow-lg shadow-orange-200/40 backdrop-blur">
+    <div className="pointer-events-none absolute bottom-3 left-4 z-30 rounded-xl border border-border bg-card px-3 py-2 text-[10px] text-foreground shadow-lg  backdrop-blur">
       <div className="flex items-center gap-3">
         {items.map((item) => (
           <span key={item.label} className="inline-flex items-center gap-1.5">
@@ -751,10 +751,10 @@ function SentenceDetail({
   sentenceIndex: number;
 }) {
   return (
-    <div className="border-t border-orange-200/70 bg-orange-50/55 px-4 py-3">
-      <div className="rounded-xl border border-orange-200/70 bg-white/70 px-4 py-3">
+    <div className="border-t border-border bg-card px-4 py-3">
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-orange-900/65">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">
             {bilingualMode ? `第 ${displayIndex} 句原句` : `Sentence ${displayIndex}`}
           </span>
           <PronunciationButton
@@ -768,33 +768,33 @@ function SentenceDetail({
       </div>
 
       {item.explanation && (
-        <div className="mt-3 rounded-xl border border-orange-200/60 bg-white/60 px-4 py-3">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-orange-900/65">
+        <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-foreground">
             {bilingualMode ? '详细解析 / Detailed Analysis' : 'Detailed Analysis'}
           </div>
-          <div className="whitespace-pre-line text-sm leading-relaxed text-orange-950/90">
+          <div className="whitespace-pre-line text-sm leading-relaxed text-foreground">
             {item.explanation}
           </div>
         </div>
       )}
 
       {item.clause_map && item.clause_map.length > 0 && (
-        <div className="mt-3 rounded-xl border border-orange-200/60 bg-white/60 px-4 py-3">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-orange-900/65">
+        <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-foreground">
             {bilingualMode ? '从句分析 / Clause Analysis' : 'Clause Analysis'}
           </div>
           <div className="space-y-2">
             {item.clause_map.map((clause, ci) => (
-              <div key={ci} className="rounded-lg border border-orange-200/50 bg-orange-50/50 px-3 py-2">
-                <div className="text-xs font-semibold text-orange-800">{clause.clause_text}</div>
+              <div key={ci} className="rounded-lg border border-border bg-card px-3 py-2">
+                <div className="text-xs font-semibold text-muted-foreground">{clause.clause_text}</div>
                 <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
                   {clause.clause_type && (
-                    <span className="rounded-md bg-orange-100 px-1.5 py-0.5 text-orange-700">
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-primary">
                       {clause.chinese_type ? `${clause.chinese_type} / ` : ''}{clause.clause_type}
                     </span>
                   )}
                   {clause.connector && (
-                    <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-amber-700">
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-primary">
                       {bilingualMode ? '连接词' : 'Connector'}: {clause.connector}
                     </span>
                   )}
@@ -805,7 +805,7 @@ function SentenceDetail({
                   )}
                 </div>
                 {clause.modifies && (
-                  <div className="mt-1 text-[11px] text-orange-900/60">
+                  <div className="mt-1 text-[11px] text-foreground">
                     {bilingualMode ? '修饰' : 'Modifies'}: {clause.modifies}
                   </div>
                 )}
@@ -816,18 +816,18 @@ function SentenceDetail({
       )}
 
       {item.reference_map && item.reference_map.length > 0 && (
-        <div className="mt-3 rounded-xl border border-orange-200/60 bg-white/60 px-4 py-3">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-orange-900/65">
+        <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-foreground">
             {bilingualMode ? '指代关系 / Reference Map' : 'Reference Map'}
           </div>
           <div className="space-y-1.5">
             {item.reference_map.map((ref, ri) => (
               <div key={ri} className="flex items-start gap-2 text-sm">
-                <span className="shrink-0 font-semibold text-orange-700">{ref.expression}</span>
-                <span className="text-orange-900/50">→</span>
-                <span className="text-orange-950/80">{ref.refers_to}</span>
+                <span className="shrink-0 font-semibold text-primary">{ref.expression}</span>
+                <span className="text-foreground">→</span>
+                <span className="text-foreground">{ref.refers_to}</span>
                 {ref.evidence && (
-                  <span className="text-[11px] text-orange-900/50">({ref.evidence})</span>
+                  <span className="text-[11px] text-foreground">({ref.evidence})</span>
                 )}
               </div>
             ))}
@@ -836,27 +836,27 @@ function SentenceDetail({
       )}
 
       {item.learning_focus && (
-        <div className="mt-3 rounded-xl border border-orange-200/60 bg-orange-50/70 px-4 py-3">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-orange-900/65">
+        <div className="mt-3 rounded-xl border border-border bg-card px-4 py-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-foreground">
             {bilingualMode ? '学习要点 / Learning Focus' : 'Learning Focus'}
           </div>
           {item.learning_focus.plain_takeaway && (
-            <p className="text-sm leading-relaxed text-orange-950/85">{item.learning_focus.plain_takeaway}</p>
+            <p className="text-sm leading-relaxed text-foreground">{item.learning_focus.plain_takeaway}</p>
           )}
           {item.learning_focus.why_it_is_hard && item.learning_focus.why_it_is_hard.length > 0 && (
             <div className="mt-2">
-              <div className="text-[11px] font-semibold text-orange-900/60 mb-1">
+              <div className="text-[11px] font-semibold text-foreground mb-1">
                 {bilingualMode ? '难点' : '难点 / Why it is hard'}
               </div>
               <ul className="list-disc pl-4 space-y-0.5">
                 {item.learning_focus.why_it_is_hard.map((h, hi) => (
-                  <li key={hi} className="text-xs text-orange-950/75">{h}</li>
+                  <li key={hi} className="text-xs text-foreground">{h}</li>
                 ))}
               </ul>
             </div>
           )}
           {item.learning_focus.reading_tip && (
-            <p className="mt-2 text-xs italic text-orange-900/60">{item.learning_focus.reading_tip}</p>
+            <p className="mt-2 text-xs italic text-foreground">{item.learning_focus.reading_tip}</p>
           )}
         </div>
       )}
@@ -890,21 +890,21 @@ function SentenceAccordionList({
       {items.map((item, index) => {
         const expanded = activeIndex === index;
         return (
-          <div key={`${item.sentence_index}-${index}`} className="overflow-hidden rounded-2xl border border-orange-200/80 bg-white/72 shadow-sm">
+          <div key={`${item.sentence_index}-${index}`} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <button
               type="button"
               onClick={() => setActiveIndex(expanded ? null : index)}
-              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-orange-100/70"
+              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted"
               aria-expanded={expanded}
             >
-              <span className="mt-0.5 shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-800">
+              <span className="mt-0.5 shrink-0 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
                 {bilingualMode ? `第 ${index + 1} 句` : `Sentence ${index + 1}`}
               </span>
-              <span className="min-w-0 flex-1 text-sm leading-relaxed text-orange-950/90">
+              <span className="min-w-0 flex-1 text-sm leading-relaxed text-foreground">
                 {item.sentence_text}
               </span>
               <ChevronDown
-                className={`mt-1 h-4 w-4 shrink-0 text-orange-900/65 transition-transform ${
+                className={`mt-1 h-4 w-4 shrink-0 text-foreground transition-transform ${
                   expanded ? 'rotate-180' : ''
                 }`}
               />
@@ -1396,7 +1396,7 @@ export default function ExplanationPanel({
   const {
     grammarMode,
     bilingualMode,
-    setBilingualMode,
+    setStudyLanguage,
     learningDepth,
     setLearningDepth,
     explanationLanguage,
@@ -1702,25 +1702,25 @@ export default function ExplanationPanel({
 
   if (generating && !data) {
     return (
-      <div className="relative flex h-full flex-col bg-gradient-to-br from-orange-50/95 via-orange-100/88 to-amber-100/85 text-orange-950 backdrop-blur-xl">
+      <div className="relative flex h-full flex-col bg-card    text-foreground backdrop-blur-xl">
         <div className="flex flex-1 flex-col p-6 space-y-6 overflow-y-auto">
-          <button type="button" className="self-end rounded border border-orange-200 px-3 py-2 text-sm" onClick={() => { abortControllerRef.current?.abort(); setGenerating(false); }}>停止生成</button>
+          <button type="button" className="self-end rounded border border-border px-3 py-2 text-sm" onClick={() => { abortControllerRef.current?.abort(); setGenerating(false); }}>停止生成</button>
           <div>
-            <div className="h-3 w-24 bg-orange-200/60 rounded animate-pulse mb-3" />
-            <SkeletonBlock lines={3} className="rounded-2xl border border-orange-200/50 bg-white/40 p-4" />
+            <div className="h-3 w-24 bg-muted rounded animate-pulse mb-3" />
+            <SkeletonBlock lines={3} className="rounded-2xl border border-border bg-card p-4" />
           </div>
           <div>
-            <div className="h-3 w-32 bg-orange-200/60 rounded animate-pulse mb-3" />
-            <SkeletonBlock lines={4} className="rounded-xl border border-orange-200/50 bg-white/40 p-3" />
+            <div className="h-3 w-32 bg-muted rounded animate-pulse mb-3" />
+            <SkeletonBlock lines={4} className="rounded-xl border border-border bg-card p-3" />
             <div className="mt-2">
-              <SkeletonBlock lines={2} className="rounded-xl border border-orange-200/50 bg-white/40 p-3" />
+              <SkeletonBlock lines={2} className="rounded-xl border border-border bg-card p-3" />
             </div>
           </div>
           <div>
-            <div className="h-3 w-20 bg-orange-200/60 rounded animate-pulse mb-3" />
+            <div className="h-3 w-20 bg-muted rounded animate-pulse mb-3" />
             <div className="flex flex-wrap gap-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-8 w-24 bg-orange-100/60 rounded-full animate-pulse" />
+                <div key={i} className="h-8 w-24 bg-muted rounded-full animate-pulse" />
               ))}
             </div>
           </div>
@@ -1756,7 +1756,7 @@ export default function ExplanationPanel({
               ? '准备拆解'
               : 'Ready to Decode'}
         </h3>
-        <p className="mb-8 max-w-sm text-sm leading-relaxed text-orange-900/65">
+        <p className="mb-8 max-w-sm text-sm leading-relaxed text-foreground">
           {hasError
             ? failureMessage
             : bilingualMode
@@ -1820,68 +1820,16 @@ export default function ExplanationPanel({
       };
 
   return (
-    <div className="relative flex h-full flex-col bg-gradient-to-br from-orange-50/95 via-orange-100/88 to-amber-100/85 text-orange-950 backdrop-blur-xl">
-      <StructureLegend bilingualMode={bilingualMode} />
-        {/* Header Actions */}
-        <div className="absolute top-0 z-20 flex w-full items-center justify-between border-b border-orange-200/80 bg-orange-50/90 px-4 py-3 shadow-sm shadow-orange-100/60 backdrop-blur-xl">
-           <div className="flex items-center gap-3">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${data.cached ? 'bg-secondary text-secondary-foreground' : 'bg-primary/20 text-primary'} ${data.status === 'STREAMING' ? 'animate-pulse' : ''}`}>
-                {generationLabel}
-              </span>
-              <button
-                type="button"
-                aria-pressed={bilingualMode}
-                onClick={() => setBilingualMode(!bilingualMode)}
-                className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                  bilingualMode
-                    ? 'border-orange-300 bg-orange-100 text-orange-800'
-                    : 'border-orange-200 bg-white/60 text-orange-900/60'
-                }`}
-              >
-                <span>中文</span>
-                <span
-                  className={`relative inline-flex h-4 w-8 items-center rounded-full ${
-                    bilingualMode ? 'bg-orange-500/70' : 'bg-orange-200'
-                  }`}
-                >
-                  <span
-                    className={`absolute h-3 w-3 rounded-full bg-white transition-transform ${
-                      bilingualMode ? 'translate-x-4' : 'translate-x-0.5'
-                    }`}
-                  />
-                </span>
-              </button>
-           </div>
-           <div className="flex items-center gap-1">
-             <select aria-label="Explanation depth" value={learningDepth} onChange={event => setLearningDepth(event.target.value as LearningDepth)} className="max-w-24 rounded border border-orange-200 bg-white px-1 py-1 text-xs text-orange-950">
-               <option value="quick">简明</option><option value="structure">结构</option><option value="grammar">语法详解</option>
-             </select>
-             {generating && <button type="button" className="text-xs" onClick={() => { abortControllerRef.current?.abort(); setGenerating(false); }}>停止</button>}
-             <button onClick={() => handleGenerate(true)} className="rounded-lg p-1.5 text-orange-900/55 transition-colors hover:bg-orange-100 hover:text-orange-950" title="Regenerate">
-                 <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-             </button>
-             {onClose && (
-                <button onClick={onClose} className="rounded-lg p-1.5 text-orange-900/55 transition-colors hover:bg-orange-100 hover:text-orange-950">
-                     ✕
-                </button>
-             )}
-           </div>
+    <div className="relative flex h-full flex-col bg-card    text-foreground backdrop-blur-xl">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">
+        <span className="text-xs text-muted-foreground">{generating?'正在解析…':'段落学习'}</span>
+        <div className="flex items-center gap-2">
+          <select aria-label="解析深度" value={learningDepth} onChange={e=>setLearningDepth(e.target.value as LearningDepth)} className="rounded-md bg-muted px-2 py-1 text-xs"><option value="quick">简明</option><option value="structure">结构</option><option value="grammar">语法详解</option></select>
+          {generating?<button className="text-xs" onClick={()=>{abortControllerRef.current?.abort();setGenerating(false);}}>停止</button>:<button aria-label="重新解析" className="rounded-md p-2 hover:bg-muted" onClick={()=>handleGenerate(true)}><RefreshCw size={14}/></button>}
         </div>
-
-      <Tabs.Root defaultValue="overview" className="flex h-full flex-1 flex-col overflow-hidden pt-12">
-        <Tabs.List className="flex shrink-0 overflow-x-auto border-b border-orange-200/80 bg-white/55 px-2 no-scrollbar">
-          <Tabs.Trigger value="overview" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
-            <div className="flex items-center space-x-2"><BookOpen className="w-4 h-4" /><span>{textLabels.tabs.overview}</span></div>
-          </Tabs.Trigger>
-          <Tabs.Trigger value="analysis" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
-            <div className="flex items-center space-x-2"><ListTree className="w-4 h-4" /><span>{textLabels.tabs.analysis}</span></div>
-          </Tabs.Trigger>
-          <Tabs.Trigger value="vocabulary" className="px-4 py-3 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:text-orange-700 text-orange-900/55 hover:text-orange-950 transition-colors whitespace-nowrap">
-            <div className="flex items-center space-x-2"><Languages className="w-4 h-4" /><span>{textLabels.tabs.vocabulary}</span></div>
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        {error && <p role="alert" className="bg-amber-50 p-3 text-xs text-amber-900">{error.message} — 已保留现有解释，可点击重试。</p>}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {error && <p role="alert" className="bg-card p-3 text-xs text-foreground">{error.message} — 已保留现有解释，可点击重试。</p>}
         {pronunciationError && (
           <div className="border-b border-red-400/20 bg-red-500/10 px-4 py-2 text-xs text-red-300">
             {pronunciationError}
@@ -1890,100 +1838,52 @@ export default function ExplanationPanel({
 
         <div className="flex-1 overflow-y-auto w-full">
             {/* Overview Tab — 理解 */}
-            <Tabs.Content value="overview" className="p-6 space-y-6 outline-none pb-32">
+            <section aria-label="本段大意" className="p-4 space-y-4">
               {/* 段落大意 */}
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
-                  <Info className="w-3 h-3 mr-1" /> {textLabels.summary}
+                <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">
+                  <Info className="w-3 h-3 mr-1" /> 本段大意
                 </h4>
                 <BilingualTextBlock
                   value={result.paragraph_summary}
                   secondary={result.plain_meaning}
                   bilingualMode={bilingualMode}
-                  className="border-l-2 border-orange-300 py-1 pl-4 text-sm leading-relaxed text-orange-950/90"
+                  className="border-l-2 border-border py-1 pl-4 text-sm leading-relaxed text-foreground"
                 />
-              </div>
-
-              {/* 逐句意译列表 */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
-                  Sentence-by-Sentence
-                </h4>
-                <div className="space-y-2">
-                  {structureBreakdown.map((sentence, index) => (
-                    <div key={index} className="rounded-xl border border-orange-200/70 bg-white/60 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <span className="text-[10px] font-semibold text-orange-900/50">
-                            {bilingualMode ? `第 ${index + 1} 句` : `Sentence ${index + 1}`}
-                          </span>
-                          <p className="text-sm leading-relaxed text-orange-950/80 mt-1">
-                            {result.plain_meaning?.split('\n')[index] || sentence.sentence_text}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleActiveSentenceChange(
-                            activeSentenceIndex === index ? null : index
-                          )}
-                          className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-100"
-                        >
-                          {activeSentenceIndex === index
-                            ? (bilingualMode ? '收起 ▲' : 'Collapse ▲')
-                            : (bilingualMode ? '查看拆解 ▶' : 'Analyze ▶')}
-                        </button>
-                      </div>
-                      {activeSentenceIndex === index && (
-                        <div className="mt-3 border-t border-orange-200/50 pt-3">
-                          <OrderedStructureLine
-                            item={sentence}
-                            sentenceIndex={sentence.sentence_index}
-                            onTokenClick={handleTokenClick}
-                          />
-                          {sentence.explanation && (
-                            <p className="mt-2 text-xs leading-relaxed text-orange-900/60">
-                              {sentence.explanation}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
               </div>
 
               {/* 阅读提示 */}
               {result.reading_tip && (
-                <div className="rounded-2xl border border-orange-200/70 bg-orange-50/70 p-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-2">{textLabels.readingTip}</h4>
+                <div className="rounded-2xl border border-border bg-card p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-2">{textLabels.readingTip}</h4>
                   <BilingualTextBlock
                     value={result.reading_tip}
                     bilingualMode={bilingualMode}
-                    className="text-sm text-orange-950/80 leading-relaxed"
+                    className="text-sm text-foreground leading-relaxed"
                   />
                 </div>
               )}
 
               {/* 语气与潜台词 */}
               {result.tone_or_subtext && (
-                <div className="rounded-2xl border border-orange-200/70 bg-orange-50/70 p-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-2">{textLabels.tone}</h4>
+                <div className="rounded-2xl border border-border bg-card p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-2">{textLabels.tone}</h4>
                   <BilingualTextBlock
                     value={result.tone_or_subtext}
                     bilingualMode={bilingualMode}
-                    className="text-sm text-orange-950/80 leading-relaxed"
+                    className="text-sm text-foreground leading-relaxed"
                   />
                 </div>
               )}
-            </Tabs.Content>
+            </section>
 
             {/* Analysis Tab — 分析 */}
-            <Tabs.Content value="analysis" className="p-6 space-y-6 outline-none pb-32">
+            <section aria-label="句子结构与语法重点" className="border-t border-border p-4 space-y-4">
               {structureBreakdown.length > 0 && (
                 <>
                   <div className="mb-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65">{textLabels.sentenceList}</h4>
-                    <p className="mt-2 text-xs leading-relaxed text-orange-900/65">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">句子结构</h4>
+                    <p className="mt-2 text-xs leading-relaxed text-foreground">
                       {textLabels.sentenceListHint}
                     </p>
                   </div>
@@ -2001,14 +1901,14 @@ export default function ExplanationPanel({
 
               {result.grammar_notes?.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
-                    Grammar Notes
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">
+                    语法重点
                   </h4>
                   <div className="space-y-2">
                     {result.grammar_notes.map((note, index) => (
-                      <div key={index} className="rounded-xl border border-orange-200/70 bg-white/60 p-3">
-                        <p className="text-sm font-medium text-orange-950">{note.pattern}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-orange-900/60">{note.explanation}</p>
+                      <div key={index} className="rounded-xl border border-border bg-card p-3">
+                        <p className="text-sm font-medium text-foreground">{note.pattern}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-foreground">{note.explanation}</p>
                       </div>
                     ))}
                   </div>
@@ -2017,31 +1917,31 @@ export default function ExplanationPanel({
 
               {result.logic_flow && result.logic_flow.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900/65 mb-3">
-                    Logic Flow
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">
+                    逻辑关系
                   </h4>
                   <div className="space-y-1">
                     {result.logic_flow.map((step, index) => (
-                      <div key={index} className="flex gap-3 rounded-xl border border-orange-200/60 bg-white/50 p-3">
-                        <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-xs font-bold text-orange-700">
+                      <div key={index} className="flex gap-3 rounded-xl border border-border bg-card p-3">
+                        <span className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-primary">
                           {step.step}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-orange-900/70">{step.relation}</span>
+                            <span className="text-xs font-semibold text-foreground">{step.relation}</span>
                           </div>
-                          <p className="mt-0.5 text-sm text-orange-950/80">{step.text}</p>
-                          <p className="mt-0.5 text-xs text-orange-900/60">{step.explanation}</p>
+                          <p className="mt-0.5 text-sm text-foreground">{step.text}</p>
+                          <p className="mt-0.5 text-xs text-foreground">{step.explanation}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-            </Tabs.Content>
+            </section>
 
             {/* Vocabulary Tab — 词汇 */}
-            <Tabs.Content value="vocabulary" className="p-4 space-y-4 outline-none animate-in fade-in slide-in-from-right-4 duration-150 pb-32">
+            <details className="border-t border-border p-4 pb-8 space-y-4"><summary className="text-sm font-medium">词汇与补充</summary>
                 {result.vocabulary_notes?.length > 0 ? (
                     <div className="space-y-4">
                         <div className="flex flex-wrap gap-2">
@@ -2050,15 +1950,15 @@ export default function ExplanationPanel({
                                     key={i}
                                     type="button"
                                     onClick={() => handleVocabClick(i)}
-                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all ${
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                                         selectedVocabIndices.has(i)
-                                            ? 'border-2 border-orange-500 bg-orange-100 text-orange-800 shadow-sm'
-                                            : 'border border-orange-200 bg-white/70 text-orange-900/70 hover:border-orange-300 hover:bg-orange-50'
+                                            ? 'border-2 border-primary bg-muted text-muted-foreground shadow-sm'
+                                            : 'border border-border bg-card text-foreground hover:border-border hover:bg-card'
                                     }`}
                                 >
                                     {vocab.term}
                                     {vocab.translation && (
-                                        <span className="text-xs text-orange-500/70">({vocab.translation})</span>
+                                        <span className="text-xs text-primary">({vocab.translation})</span>
                                     )}
                                 </button>
                             ))}
@@ -2071,11 +1971,11 @@ export default function ExplanationPanel({
                                     return (
                                         <div
                                             key={index}
-                                            className="rounded-2xl border border-orange-200/80 bg-white/70 p-4 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-2 duration-200"
+                                            className="rounded-2xl border border-border bg-card p-4 shadow-sm transition-colors animate-in fade-in slide-in-from-bottom-2 duration-200"
                                         >
                                             <div className="flex items-center justify-between gap-2 mb-2">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-lg font-bold text-orange-700">{vocab.term}</span>
+                                                    <span className="text-lg font-bold text-primary">{vocab.term}</span>
                                                     <PronunciationButton
                                                         text={vocab.term}
                                                         label={bilingualMode ? '播放单词发音 / Play word pronunciation' : 'Play word pronunciation'}
@@ -2084,14 +1984,14 @@ export default function ExplanationPanel({
                                                     />
                                                 </div>
                                                 {vocab.translation && (
-                                                    <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-600">
+                                                    <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-primary">
                                                         {vocab.translation}
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-sm font-medium text-orange-950/80">{vocab.meaning}</p>
+                                            <p className="text-sm font-medium text-foreground">{vocab.meaning}</p>
                                             {vocab.usage_note && (
-                                                <p className="mt-2 border-l-2 border-orange-300 pl-3 text-xs italic text-orange-900/60">
+                                                <p className="mt-2 border-l-2 border-border pl-3 text-xs italic text-foreground">
                                                     {vocab.usage_note}
                                                 </p>
                                             )}
@@ -2102,13 +2002,13 @@ export default function ExplanationPanel({
                         )}
                     </div>
                 ) : (
-                    <div className="flex items-center justify-center py-12 text-sm text-orange-900/50">
-                        No specialized vocabulary detected.
+                    <div className="flex items-center justify-center py-12 text-sm text-foreground">
+                        本段没有额外的重点词汇。
                     </div>
                 )}
-            </Tabs.Content>
+            </details>
         </div>
-      </Tabs.Root>
+      </div>
     </div>
   );
 }

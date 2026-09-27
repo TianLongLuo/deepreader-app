@@ -1,0 +1,24 @@
+name: Assemble reviewed self-hosted migration
+on:
+  push:
+    branches: [codex/sites-migration-20260927]
+permissions:
+  contents: write
+jobs:
+  assemble:
+    if: contains(github.event.head_commit.message, '[assemble-migration]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.9'
+      - name: Restore and verify pinned resources
+        run: python .migration/assemble.py
+      - name: Commit verified snapshot to staging branch only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: migrate reviewed Sites UI and offline dictionaries to self-hosted Next.js"
+          git push origin HEAD:codex/sites-migration-20260927

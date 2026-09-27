@@ -12,3 +12,5 @@ it.each(['admin@qq.com', 'ADMIN@qq.com', ' admin@qq.com '])('prevents public reg
   expect(mocks.findUnique).not.toHaveBeenCalled();
   config.mockRestore();
 });
+it('rejects reserved admin username before public registration',async()=>{await expect(registerUser('Lone','example-password')).rejects.toThrow('reserved');});
+it('rejects short passwords before querying users',async()=>{await expect(registerUser('person@example.test','short')).rejects.toThrow('Password');});

@@ -1,3 +1,4 @@
+import { assertSameOrigin } from '@/lib/auth-guard';
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import {
@@ -21,6 +22,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    assertSameOrigin(req);
     await requireAdmin();
     const body = (await req.json()) as {
       allowRegistrations?: unknown;

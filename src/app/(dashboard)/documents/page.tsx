@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { requireAuth } from '@/lib/auth';
 import { documentService } from '@/server/documents/document.service';
 import DocumentList from '@/components/documents/document-list';
@@ -6,17 +7,5 @@ export default async function DocumentsPage() {
   const user = await requireAuth();
   const documents = await documentService.listDocuments(user.workspaceId!, user.id);
 
-  return (
-    <div className="cat-page-shell mx-auto max-w-6xl space-y-8 animate-in fade-in duration-500">
-      <div className="relative z-10 flex items-end justify-between rounded-[2rem] border border-orange-200/70 bg-white/60 p-6 shadow-xl shadow-orange-200/30 backdrop-blur-xl">
-        <div>
-          <div className="mb-3 text-4xl">🐱📚</div>
-          <h1 className="cat-heading mb-2 text-4xl font-black tracking-tight">My Library</h1>
-          <p className="cat-muted cursor-default font-medium">Pick a book, curl up, and begin deep reading.</p>
-        </div>
-      </div>
-      
-      <DocumentList initialDocuments={documents} />
-    </div>
-  );
+  return <div className="page-shell max-w-6xl space-y-8"><header className="flex items-end justify-between gap-4"><div><p className="mb-3 text-xs font-medium tracking-widest text-muted-foreground">DEEPREADER</p><h1 className="text-3xl font-semibold tracking-tight">书库</h1><p className="mt-2 text-sm text-muted-foreground">在原文中理解，让每一次阅读有所收获。</p></div><Link href="/upload" className="inline-flex shrink-0 items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">导入书籍</Link></header><DocumentList initialDocuments={documents}/></div>;
 }

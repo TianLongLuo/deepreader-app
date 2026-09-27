@@ -1,0 +1,9 @@
+{
+  "version": "wiktionary-compact-2026-09-27",
+  "upstream": "https://github.com/tdulcet/compact-dictionaries",
+  "license": "https://creativecommons.org/licenses/by-sa/3.0/",
+  "sources": {
+    "en": {"url":"https://gitlab.com/tdulcet/compact-dictionary/-/raw/main/wiktionary/dictionary-en.json?inline=false","sha256":"c20a42b3d59910377ee8d7e7fed5b55ff2dd3b31f3453f02112b76ba25fc1e76"},
+    "es": {"url":"https://gitlab.com/tdulcet/compact-dictionary/-/raw/main/wiktionary/dictionary-es.json?inline=false","sha256":"f5407bb8afca6ac86dbc63c17ac288e9ec5308c6260c38712c736f73d1e00974"}
+  }
+}

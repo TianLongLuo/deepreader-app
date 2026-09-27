@@ -1,3 +1,4 @@
+import {book} from './fixtures/pdf';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -44,7 +45,7 @@ describe('upload validation', () => {
   it('accepts a valid file', async () => {
     const { POST } = await import('@/app/api/documents/upload/route');
     const form = new FormData();
-    form.set('file', new File(['%PDF sample'], 'sample.pdf', { type: 'application/pdf' }));
+    form.set('file', new File([new Uint8Array(book(['BT /F1 12 Tf 50 700 Td (Fixture.) Tj ET']))], 'sample.pdf', { type: 'application/pdf' }));
     mocks.uploadDocument.mockResolvedValue({ id: 'document' });
     const response = await POST(new Request('http://localhost/upload', { method: 'POST', body: form }));
     expect(response.status).toBe(200);
@@ -62,3 +63,5 @@ it('returns short PDF headings and dialogue to the reader', async () => {
   const payload = await response.json();
   expect(payload.paragraphs.map((p: { text: string }) => p.text)).toEqual(['Go!', '你好。', 'Chapter 1']);
 });
+it('rejects forged file content despite a PDF extension',async()=>{const {POST}=await import('@/app/api/documents/upload/route');const form=new FormData();form.set('file',new File(['not a PDF'],'fake.pdf',{type:'application/pdf'}));expect((await POST(new Request('http://localhost/upload',{method:'POST',body:form}))).status).toBe(415);});
+it.each([['%PDF','fake.pdf','application/pdf'],['PK\x03\x04not an epub','fake.epub','application/epub+zip']])('rejects incomplete containers before creating a book: %s',async(bytes,name,type)=>{const {POST}=await import('@/app/api/documents/upload/route');const form=new FormData();form.set('file',new File([bytes],name,{type}));const result=await POST(new Request('http://localhost/upload',{method:'POST',body:form}));expect(result.status).toBe(415);expect(mocks.uploadDocument).not.toHaveBeenCalled();});

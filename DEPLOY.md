@@ -1,78 +1,62 @@
-# DeepReader Ubuntu Deployment
+# 自建服务器部署（Ubuntu / Node.js 22）
 
-This package is prepared for:
+本仓库包含完整应用及自托管词库，不包含用户数据库、书籍、账号密码或 AI 密钥。
+运行方式：Next.js + Prisma/SQLite；本地磁盘或 S3 存储；Redis 缓存可选。
 
-- Ubuntu 24.04
-- Node.js 22
-- `npm` or `pnpm` available
-- SQLite local storage
+## 首次部署
+1. 安装 Node.js 22、npm 和 Git，克隆本仓库。
+2. `cp .env.example .env.production && chmod 600 .env.production`。
+3. 编辑 `.env.production`：
+   - `DATABASE_URL="file:./dev.db"`（相对路径基于 `prisma/`；也可以使用绝对路径）。
+   - `ENCRYPTION_KEY`：用 `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` 生成一次，安全保存。
+   - 设置 `ADMIN_EMAIL`、`ADMIN_LOGIN_NAME`（默认 Lone）；不要使用公开对话中出现过的密码。
+   - 运行 `npm ci`，执行 `read -rs PASSWORD; printf %s "$PASSWORD" | node scripts/admin-password.mjs; unset PASSWORD` 生成 bcrypt 哈希，填入 `ADMIN_PASSWORD_HASH`，用双引号包围。不要把原始密码放到命令参数、Git 或日志中。
+   - `APP_BASE_URL` 填写 HTTPS 域名。首次成功使用管理员用户名与对应密码登录时才初始化管理员；不会覆盖已有账号。
+4. `chmod +x deploy-ubuntu.sh start-production.sh stop-production.sh`，执行 `./deploy-ubuntu.sh`。
+5. 配置 HTTPS 反向代理，转发到本地 3000 端口。登录 Cookie 在生产环境要求 HTTPS，直接 HTTP IP 登录不作为生产部署方式。
 
-It already includes:
+AI 密钥在管理员后台配置。注册后可直接阅读；能否使用共享 AI / 修改个人 AI 设置由管理员控制。无外部词典接口依赖，已有释义与音标随站点文件提供；AI 语境解析仍需要模型服务。
 
-- current application source
-- current SQLite database at `prisma/dev.db`
-- current uploaded books at `storage/`
-- current saved DeepSeek provider configuration in the database
-- the matching `ENCRYPTION_KEY` in `.env.production`
-- Ubuntu deployment scripts
-
-## Fastest deploy
-
-1. Upload this folder to the server.
-2. Enter the folder.
-3. Run:
-
-```bash
-chmod +x deploy-ubuntu.sh start-production.sh stop-production.sh status-production.sh
-./deploy-ubuntu.sh http://YOUR_SERVER_IP:3000
+## 反向代理示例
+在已有 HTTPS Nginx server 块中设置：
 ```
-
-If you already have a domain or reverse proxy, replace the URL with your final public URL, for example:
-
-```bash
-./deploy-ubuntu.sh https://reader.yourdomain.com
+client_max_body_size 200m;
+location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_read_timeout 300s;
+}
 ```
+阻止公网直接访问 3000；将 `AUTH_TRUST_PROXY="true"`，只信任由该代理覆盖的 `X-Real-IP`。未配置可信代理时，请求共享保守的 IP 限流桶；账号另有限流。不要直接信任客户端传入的 IP 头。
 
-## After deploy
+## 更新旧服务器（先备份）
+- 停止服务；备份 SQLite 数据库、`storage/`、`.env.production`，数据库应在停机后备份，或使用 SQLite 一致性备份。
+- **保留原 ENCRYPTION_KEY**，否则原 AI 密钥无法解密；不要用新的示例覆盖旧环境文件。
+- 保留原数据库和 storage 路径。管理员邮箱应与旧管理员身份一致；已有账号不会被初始化逻辑覆盖。
+- 拉取新 main 后执行部署脚本。脚本不再修改原 AI 模型配置。
+- `prisma db push` 不带 `--accept-data-loss`，遇到潜在数据损失立即停止；不要加该标志绕过提示。本次仅增加 `auth_attempts` 限流表。
+- 回滚：停服务，检出升级前提交，恢复备份数据库/配置/书籍，再安装、生成 Prisma、构建并启动。不要恢复代码却混用不兼容的数据快照。
 
-Check logs:
-
-```bash
-tail -f logs/app.out.log
-tail -f logs/app.err.log
+## 手动启动 / 验证
 ```
-
-Stop:
-
-```bash
-./stop-production.sh
+npm ci
+node --env-file=.env.production node_modules/prisma/build/index.js generate
+node --env-file=.env.production node_modules/prisma/build/index.js db push --skip-generate
+npm run build
+npm run start
 ```
+部署必须保留 `public/` 和 `scripts/dictionaries/sources.json` 等工程文件，不要只复制 `.next/`。
+构建自动校验 512 个词库分片。日志在 `logs/`，停止/启动使用配套脚本。大型多用户站点可另行规划数据库和进程管理扩容，本版默认单机 SQLite。
 
-Start again without rebuilding:
+## 数据来源
+词库来自 Wiktionary / Compact Dictionaries，许可、来源、下载校验及变更声明见 `public/dictionaries/NOTICE.txt`。更新词库使用 `scripts/dictionaries/import.py`，日常构建和查词不下载外部词典。缺失的音标不编造；外部录音未打包。
 
-```bash
-./start-production.sh
-```
+### 旧版管理员角色
+后台现在只认可数据库中的 `ADMIN` 角色，不再仅凭 `admin@qq.com` 邮箱放行。升级前请核对现有管理员的角色；若旧账号依赖邮箱特例，请由服务器拥有者备份数据库后明确设置该账号的 `role` 为 `ADMIN`。部署和公开注册不会自动提升已有账号权限。
 
-Status:
+旧账号登录继续使用既有密码校验规则；8 字符/72 字节限制只针对新注册。旧邮箱大小写不改写；若数据库中已有仅大小写不同的两个账号，请使用各自原始邮箱拼写登录，系统不会自动合并账号或书库。
 
-```bash
-./status-production.sh
-```
-
-## Important notes
-
-- `.env.production` is already included.
-- The current SQLite database already contains your working DeepSeek configuration.
-- `ENCRYPTION_KEY` must stay unchanged, otherwise the saved AI provider key in the database cannot be decrypted.
-- This package uses SQLite, so no MySQL or PostgreSQL setup is required for first deployment.
-- Redis is optional. If Redis is not installed, the app will fall back to no-cache mode.
-- Max upload size is already set to `200MB`.
-
-## Optional systemd setup
-
-You can use `systemd/deepreader.service.template` as a base and replace:
-
-- `__APP_DIR__` with your upload directory
-- `__RUN_USER__` with your Linux user
-- `__RUN_GROUP__` with your Linux group
+### 从曾跟踪运行配置的旧版本升级
+旧仓库曾把 `storage/system/app-config.json`（含加密密钥配置及预览）纳入 Git；本版本停止跟踪该文件。**拉取前先把此文件备份到仓库外，拉取后恢复到原路径，再启动服务**，否则未修改的旧跟踪文件可能被 Git 删除。新安装不自带任何模型密钥。历史提交中的旧配置仍存在，建议在提供商后台轮换曾写入仓库的密钥，然后在管理员后台重新保存。

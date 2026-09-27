@@ -1,5 +1,7 @@
 'use client';
 
+import {ConfirmDialog} from '@/components/ui/confirm-dialog';
+import {filterLibrary} from './library-model';
 import { useState } from 'react';
 import Link from 'next/link';
 import { formatFileSize } from '@/lib/utils';
@@ -19,31 +21,29 @@ export default function DocumentList({
   initialDocuments: DocumentListItem[];
 }) {
   const [documents, setDocuments] = useState(initialDocuments);
+  const [view,setView]=useState<'grid'|'list'>('grid');
+  const [action,setAction]=useState<{kind:'rename'|'delete';doc:DocumentListItem}|null>(null);
+  const [title,setTitle]=useState('');
+  const [busy,setBusy]=useState(false);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent');
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<string[]>([]);
-  const visible = [...documents].filter(d => d.title.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : sort === 'upload' ? +new Date(b.createdAt) - +new Date(a.createdAt) : +new Date(b.readingProgress?.[0]?.updatedAt ?? b.createdAt) - +new Date(a.readingProgress?.[0]?.updatedAt ?? a.createdAt));
+  const visible = filterLibrary(documents,query).sort((a, b) => sort === 'title' ? a.title.localeCompare(b.title) : sort === 'upload' ? +new Date(b.createdAt) - +new Date(a.createdAt) : +new Date(b.readingProgress?.[0]?.updatedAt ?? b.createdAt) - +new Date(a.readingProgress?.[0]?.updatedAt ?? a.createdAt));
   const handleRename = async (doc: DocumentListItem) => {
-    const title = window.prompt('Book title', doc.title)?.trim();
-    if (!title || title === doc.title) return;
+    const nextTitle=title.trim();
+    if (!nextTitle || nextTitle === doc.title) {setAction(null);return;}
     setError('');
     try {
-      const response = await fetch('/api/documents/' + doc.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      const response = await fetch('/api/documents/' + doc.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title:nextTitle }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to rename book');
-      setDocuments(list => list.map(d => d.id === doc.id ? { ...d, title: payload.title } : d));
+      setDocuments(list => list.map(d => d.id === doc.id ? { ...d, title: payload.title } : d));setAction(null);
     } catch (e) { setError((e as Error).message); }
   };
 
   const handleDelete = async (documentId: string) => {
     if (deleting.includes(documentId)) return;
-    const confirmed = window.confirm(
-      '删除这本书及其阅读进度、笔记、生词和 AI 记录？此操作不可撤销。'
-    );
-    if (!confirmed) {
-      return;
-    }
 
     setError('');
     setDeleting(current => [...current, documentId]);
@@ -53,7 +53,7 @@ export default function DocumentList({
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || '删除未完成，请重试。');
       }
-      setDocuments(current => current.filter(doc => doc.id !== documentId));
+      setDocuments(current => current.filter(doc => doc.id !== documentId));setAction(null);
     } catch (failure) {
       // A failed response may have occurred after deletion started (or even
       // finished). Refresh its durable status before offering the next action.
@@ -71,107 +71,27 @@ export default function DocumentList({
     }
   };
 
-  if (documents.length === 0) {
-    return (
-      <div className="relative z-10 rounded-[2rem] border-2 border-dashed border-orange-200 bg-white/60 py-20 text-center shadow-inner shadow-orange-100">
-        <div className="mx-auto mb-4 text-5xl">🐱📄</div>
-        <FileText className="mx-auto mb-4 h-12 w-12 text-orange-400 opacity-70" />
-        <h3 className="text-lg font-bold text-orange-950">No documents found</h3>
-        <p className="mb-6 mt-2 text-orange-900/60">Upload a PDF or EPUB to get started.</p>
-        <Link href="/upload" className="inline-flex h-10 items-center justify-center rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-200 hover:bg-orange-600">
-          Upload Document
-        </Link>
-      </div>
-    );
-  }
 
-  return (
-    <div className="relative z-10 space-y-5">
-      <div className="flex flex-wrap gap-3"><input aria-label="Search books" placeholder="Search your books…" value={query} onChange={e => setQuery(e.target.value)} className="flex-1 rounded-xl border border-orange-200 bg-white p-3" /><select aria-label="Sort books" value={sort} onChange={e => setSort(e.target.value)} className="rounded-xl border border-orange-200 bg-white p-3"><option value="recent">Recently read</option><option value="upload">Recently uploaded</option><option value="title">Title</option></select><Link href="/study" className="rounded-xl bg-orange-100 p-3">Notes & vocabulary</Link></div>
-      {error && <p role="alert" className="text-red-700">{error}</p>}
-      {!visible.length && <p>No books match your search.</p>}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {visible.map((doc) => (
-        <DocumentCard key={doc.id} doc={doc} deleting={deleting.includes(doc.id)} onDelete={handleDelete} onRename={handleRename} />
-      ))}
-      </div>
+  const recent=documents.filter(d=>d.readingProgress?.length).sort((a,b)=>+new Date(b.readingProgress![0].updatedAt)-+new Date(a.readingProgress![0].updatedAt))[0];
+  return <div className="space-y-7">
+    {recent&&!query&&<Link href={'/reader/'+recent.id} className="flex items-center justify-between gap-5 rounded-xl border border-border bg-card p-5"><div className="min-w-0"><p className="mb-2 text-xs font-medium text-muted-foreground">继续阅读</p><h2 className="truncate font-semibold">{recent.title}</h2><p className="mt-2 text-xs text-muted-foreground">已读 {Math.round(recent.readingProgress![0].percentage)}%</p></div><span className="shrink-0 text-primary">继续 →</span></Link>}
+    <div className="flex flex-wrap items-center gap-2"><input aria-label="搜索书籍" placeholder="搜索书库" value={query} onChange={e=>setQuery(e.target.value)} className="native-field min-w-0 flex-1"/><select aria-label="排序" value={sort} onChange={e=>setSort(e.target.value)} className="rounded-lg border border-border bg-card p-2.5 text-sm"><option value="recent">最近阅读</option><option value="upload">最近导入</option><option value="title">书名</option></select><button className="native-action" onClick={()=>setView(v=>v==='grid'?'list':'grid')}>{view==='grid'?'列表视图':'网格视图'}</button></div>
+    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+    {!visible.length&&<div className="rounded-xl border border-dashed border-border py-16 text-center"><FileText className="mx-auto mb-4 h-8 w-8 text-muted-foreground"/><h2 className="font-semibold">{documents.length?'没有匹配的书籍':'你的下一段阅读，从这里开始'}</h2><p className="mt-2 text-sm text-muted-foreground">{documents.length?'换个关键词，或清空搜索。':'导入 PDF 或 EPUB，建立自己的书库。'}</p>{!documents.length&&<Link href="/upload" className="native-action mt-5">导入第一本书</Link>}</div>}
+    <div className={view==='grid'?'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3':'space-y-3'}>
+      {visible.map(doc=>{
+        const deletingNow=deleting.includes(doc.id),pending=doc.status==='DELETING',ready=doc.parseStatus==='COMPLETED'&&!pending&&!deletingNow;
+        return <article key={doc.id} className={'relative min-w-0 rounded-xl border border-border bg-card '+(view==='list'?'flex items-center':'')}>
+          <Link href={ready?'/reader/'+doc.id:'#'} aria-disabled={!ready} onClick={e=>{if(!ready)e.preventDefault();}} className={'block min-w-0 flex-1 '+(view==='list'?'p-5':'')}>
+            {view==='grid'&&<div className="flex h-40 flex-col justify-end rounded-t-xl border-b border-border bg-muted/60 px-5 pb-5 pt-8"><span className="mb-3 text-[10px] tracking-[.2em] text-muted-foreground">{doc.fileType} / DEEPREADER</span><p className="line-clamp-3 max-w-[85%] font-serif text-xl leading-6 [overflow-wrap:anywhere]">{doc.title}</p></div>}
+            <div className={view==='grid'?'p-5':''}><h3 className="line-clamp-2 pr-6 text-sm font-medium [overflow-wrap:anywhere]">{doc.title}</h3><p className="mt-2 text-xs text-muted-foreground">{doc.fileType} · {formatFileSize(doc.fileSize)}{doc.readingProgress?.[0]?' · 已读 '+Math.round(doc.readingProgress[0].percentage)+'%':''}</p>{!ready&&<p role="status" className="mt-3 text-xs text-muted-foreground">{pending?'删除未完成，请重试':deletingNow?'正在删除…':doc.parseStatus==='FAILED'?'解析失败':'正在解析…'}</p>}</div>
+          </Link>
+          <details className="absolute right-3 top-3"><summary aria-label={'书籍操作 '+doc.title} className="list-none rounded-md bg-card px-2 py-1 text-muted-foreground hover:bg-muted">•••</summary><div className="absolute right-0 z-20 mt-1 w-32 rounded-lg border border-border bg-popover p-1 shadow-lg"><button disabled={deletingNow||pending} className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted" onClick={()=>{setTitle(doc.title);setError('');setAction({kind:'rename',doc});}}>重命名</button><button disabled={deletingNow} className="w-full rounded px-3 py-2 text-left text-sm text-destructive hover:bg-muted" onClick={()=>{setError('');setAction({kind:'delete',doc});}}>{pending?'重试删除':'删除'}</button></div></details>
+        </article>;
+      })}
     </div>
-  );
-}
-
-function DocumentCard({
-  doc,
-  onDelete,
-  onRename,
-  deleting,
-}: {
-  doc: DocumentListItem;
-  onDelete: (documentId: string) => Promise<void>;
-  onRename: (doc: DocumentListItem) => Promise<void>;
-  deleting: boolean;
-}) {
-  const deletionPending = doc.status === 'DELETING';
-  const isReady = doc.parseStatus === 'COMPLETED' && !deletionPending && !deleting;
-  const isProcessing = doc.parseStatus === 'PROCESSING' || doc.parseStatus === 'PENDING';
-
-  return (
-    <Card className="group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-200/60">
-      <button
-        type="button"
-        disabled={deleting}
-        className="absolute right-3 top-3 z-20 rounded-full border border-orange-200 bg-white/80 p-2 text-orange-700 shadow-sm backdrop-blur-md transition-colors hover:text-red-600"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          void onDelete(doc.id);
-        }}
-        aria-label={`${deletionPending ? '重试删除' : 'Delete'} ${doc.title}`}
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-
-      <button disabled={deletionPending || deleting} onClick={() => void onRename(doc)} className="absolute left-3 top-3 z-20 rounded-full bg-white/90 px-3 py-2 text-sm text-orange-800 disabled:opacity-40">Rename</button>
-      {!isReady && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-orange-50/70 backdrop-blur-[2px]">
-            {deletionPending || deleting ? (
-                <p role="status" className="rounded-xl border border-orange-200 bg-white px-4 py-3 text-center text-sm text-orange-900">
-                  {deleting ? '正在删除…' : '删除未完成，请点击右上角重试删除。'}
-                </p>
-            ) : isProcessing ? (
-                <div className="flex flex-col items-center text-orange-600">
-                    <RefreshCw className="w-8 h-8 animate-spin mb-2" />
-                    <span className="rounded-full border border-orange-200 bg-white px-3 py-1 text-sm font-medium shadow-sm">Parsing content...</span>
-                </div>
-            ) : (
-                <div className="flex flex-col items-center text-destructive">
-                    <AlertTriangle className="w-8 h-8 mb-2" />
-                    <span className="text-sm font-medium bg-background px-3 py-1 rounded-full border border-destructive shadow-sm">Parse failed</span>
-                </div>
-            )}
-        </div>
-      )}
-      
-      <Link aria-disabled={!isReady} tabIndex={isReady ? undefined : -1} href={isReady ? `/reader/${doc.id}${doc.readingProgress?.[0]?.location ? `?location=${encodeURIComponent(doc.readingProgress[0].location)}` : ''}` : '#'} className={!isReady ? 'pointer-events-none opacity-50' : ''}>
-        <div className="flex h-36 items-center justify-center border-b border-orange-200 bg-gradient-to-br from-orange-100 via-amber-50 to-white transition-colors group-hover:from-orange-200/80">
-          <div className="rounded-full bg-white/70 p-4 text-4xl shadow-inner shadow-orange-100">📖</div>
-        </div>
-        <CardHeader className="pt-4">
-          <CardTitle className="line-clamp-2 text-lg text-orange-950 transition-colors group-hover:text-orange-600" title={doc.title}>
-            {doc.title}
-          </CardTitle>
-          <CardDescription className="mt-2 flex items-center space-x-2 text-orange-900/55">
-            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">{doc.fileType}</span>
-            <span>{formatFileSize(doc.fileSize)}</span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {doc.readingProgress?.[0] && <div className="mb-3 space-y-2"><div className="flex justify-between text-sm text-orange-800"><span>Continue reading</span><span>{Math.round(doc.readingProgress[0].percentage)}%</span></div><progress aria-label="Reading progress" value={doc.readingProgress[0].percentage} max={100} className="h-2 w-full accent-orange-500" /></div>}
-          <div className="flex items-center text-xs text-orange-900/50">
-            <Clock className="w-3 h-3 mr-1" />
-            {new Date(doc.createdAt).toLocaleDateString()}
-          </div>
-        </CardContent>
-      </Link>
-    </Card>
-  );
+    <ConfirmDialog open={Boolean(action)} onClose={()=>setAction(null)} title={action?.kind==='rename'?'重命名书籍':'删除书籍？'} busy={busy} confirmLabel={action?.kind==='rename'?'保存':'删除'} onConfirm={()=>{if(!action)return;setBusy(true);void (action.kind==='rename'?handleRename(action.doc):handleDelete(action.doc.id)).finally(()=>setBusy(false));}}>
+      {action?.kind==='rename'?<input aria-label="书名" autoFocus value={title} onChange={e=>setTitle(e.target.value)} className="native-field"/>:<p>将删除这本书及其阅读进度、笔记、生词和 AI 记录。此操作不可撤销。</p>}{error&&<p role="alert" className="mt-2 text-destructive">{error}</p>}
+    </ConfirmDialog>
+  </div>;
 }

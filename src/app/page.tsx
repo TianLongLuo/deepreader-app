@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-
-export default function Page() {
-  redirect('/login');
-}
+import { getCurrentUser } from '@/lib/auth';
+export const dynamic='force-dynamic';
+export default async function Page(){redirect((await getCurrentUser())?'/documents':'/login');}

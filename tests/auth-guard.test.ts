@@ -1,0 +1,10 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const db=vi.hoisted(()=>({deleteMany:vi.fn(),upsert:vi.fn()}));
+vi.mock('@/lib/prisma',()=>({prisma:{authAttempt:db}}));
+import {assertSameOrigin,checkAuthRequest} from '@/lib/auth-guard';
+beforeEach(()=>{vi.unstubAllEnvs();vi.clearAllMocks();db.upsert.mockResolvedValue({attempts:1});});
+it('rejects cross-site writes',()=>{expect(()=>assertSameOrigin(new Request('https://reader.test/api',{headers:{origin:'https://other.test'}}))).toThrow('origin');});
+it('enforces persisted login limits',async()=>{db.upsert.mockResolvedValue({attempts:31});await expect(checkAuthRequest(new Request('https://reader.test/api'),'login','reader@example.test')).rejects.toMatchObject({status:429});});
+it('ignores spoofed IP headers unless a trusted proxy is configured',async()=>{await checkAuthRequest(new Request('https://reader.test/api',{headers:{'x-real-ip':'fake-one'}}),'signup','a');const first=db.upsert.mock.calls[0][0].where.key;await checkAuthRequest(new Request('https://reader.test/api',{headers:{'x-real-ip':'fake-two'}}),'signup','b');expect(db.upsert.mock.calls[1][0].where.key).toBe(first);});
+it('shares the login counter between admin alias and configured email',async()=>{vi.stubEnv('ADMIN_EMAIL','owner@example.test');await checkAuthRequest(new Request('https://reader.test/api'),'login','lone');await checkAuthRequest(new Request('https://reader.test/api'),'login','owner@example.test');expect(db.upsert.mock.calls[1][0].where.key).toBe(db.upsert.mock.calls[3][0].where.key);});
+it('allows legacy short and long passwords on login but not signup',async()=>{const {parseCredentials}=await import('@/lib/auth-guard');for(const password of ['old','x'.repeat(100)]){expect(()=>parseCredentials({email:'Alice@Example.com',password})).not.toThrow();expect(()=>parseCredentials({email:'Alice@Example.com',password},true)).toThrow();}expect(parseCredentials({email:'Alice@Example.com',password:'password'}).email).toBe('Alice@Example.com');});

@@ -25,7 +25,7 @@ let schemaDir: string;
 beforeAll(async () => {
   const mocked = await import('@/lib/prisma') as typeof import('@/lib/prisma') & { dir: string };
   schemaDir = mkdtempSync(join(tmpdir(), 'deepreader-schema-'));
-  const schema = readFileSync('prisma/schema.prisma', 'utf8').replace('file:./dev.db', `file:${join(mocked.dir, 'test.db').replaceAll('\\', '/')}`);
+  const schema = readFileSync('prisma/schema.prisma', 'utf8').replace('env("DATABASE_URL")', JSON.stringify(`file:${join(mocked.dir, 'test.db').replaceAll('\\', '/')}`));
   const schemaPath = join(schemaDir, 'schema.prisma');
   writeFileSync(schemaPath, schema);
   writeFileSync(join(mocked.dir, 'test.db'), '');

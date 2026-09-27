@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { AIProviderSettings } from '@/types/ai';
 
 export default function AISettingsForm({ initialData }: { initialData: any }) {
+  const [saveError,setSaveError]=useState('');
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency?: number } | null>(null);
@@ -34,13 +35,13 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
   };
 
   // Merge default values properly if initialData is empty Object
-  const mergedInitialData = initialData && Object.keys(initialData).length > 0 
-    ? { ...defaultValues, ...initialData } 
+  const mergedInitialData = initialData && Object.keys(initialData).length > 0
+    ? { ...defaultValues, ...initialData }
     : defaultValues;
 
   const formKey = 'ai_settings_draft';
   const { draft, hasDraft, updateDraft, discardDraft } = useDraft<any>(formKey, mergedInitialData);
-  
+
   // Update draft from initialData if local storage is empty and initialData has properties
   useEffect(() => {
     if (!hasDraft && initialData && Object.keys(initialData).length > 0) {
@@ -51,13 +52,13 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
     let finalValue: any = value;
-    
+
     if (type === 'checkbox') {
       finalValue = (e.target as HTMLInputElement).checked;
     } else if (type === 'number') {
       finalValue = Number(value);
     }
-    
+
     updateDraft({ ...draft, [name]: finalValue });
     setSaveSuccess(false);
   };
@@ -86,7 +87,7 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
   };
 
   const handleSave = async () => {
-    setLoading(true);
+    setLoading(true);setSaveError('');
     setSaveSuccess(false);
     try {
       const res = await fetch('/api/settings/ai', {
@@ -94,16 +95,16 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft),
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
+
       // Update local storage but drop the apiKey since it's saved
       updateDraft({ ...draft, apiKey: '', maskedApiKeyPreview: data.maskedApiKeyPreview });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
-      alert(`Save failed: ${(e as Error).message}`);
+      setSaveError('保存失败：'+(e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -112,21 +113,21 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
   return (
     <div className="relative z-10 space-y-6">
       {hasDraft && draft.apiKey === '' && !saveSuccess && (
-        <div className="flex items-center justify-between rounded-2xl border border-orange-300 bg-orange-100/80 p-4 text-sm font-semibold text-orange-800">
-          <span>You have unsaved changes drafted locally.</span>
-          <Button variant="ghost" size="sm" onClick={discardDraft}>Discard Draft</Button>
+        <div className="flex items-center justify-between rounded-2xl border border-border bg-muted p-4 text-sm font-semibold text-muted-foreground">
+          <span>你有尚未保存的本地草稿。</span>
+          <Button variant="ghost" size="sm" onClick={discardDraft}>丢弃草稿</Button>
         </div>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-orange-950">🐾 DeepSeek Connection Settings</CardTitle>
-          <CardDescription className="text-orange-900/60">Configure the connection to the DeepSeek AI platform.</CardDescription>
+          <CardTitle className="text-foreground"> DeepSeek 连接</CardTitle>
+          <CardDescription className="text-foreground">配置个人 AI 服务，不影响其他账户。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">Base URL</label>
+              <label className="text-sm font-semibold text-foreground">接口地址</label>
               <Input
                 name="baseUrl"
                 value={draft.baseUrl || ''}
@@ -135,7 +136,7 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">API Key</label>
+              <label className="text-sm font-semibold text-foreground">API Key</label>
               <Input
                 type="password"
                 name="apiKey"
@@ -143,12 +144,12 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
                 onChange={handleChange}
                 placeholder={draft.maskedApiKeyPreview || "sk-..."}
               />
-              <p className="text-xs text-orange-900/50">
-                {draft.maskedApiKeyPreview ? `Saved key: ${draft.maskedApiKeyPreview}` : 'Key is encrypted at rest securely.'}
+              <p className="text-xs text-foreground">
+                {draft.maskedApiKeyPreview ? `已保存密钥：${draft.maskedApiKeyPreview}` : '密钥加密保存；留空保留已有密钥。'}
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">Model Name</label>
+              <label className="text-sm font-semibold text-foreground">模型名称</label>
               <Input
                 name="model"
                 value={draft.model || ''}
@@ -157,7 +158,7 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">Timeout (ms)</label>
+              <label className="text-sm font-semibold text-foreground">超时（毫秒）</label>
               <Input
                 type="number"
                 name="timeoutMs"
@@ -167,9 +168,9 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
             </div>
           </div>
 
-          <div className="flex flex-col justify-between gap-4 border-t border-orange-200/70 pt-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col justify-between gap-4 border-t border-border pt-4 sm:flex-row sm:items-center">
             <Button variant="outline" onClick={handleTestConnection} disabled={testLoading}>
-              {testLoading ? 'Testing...' : 'Test Connection'}
+              {testLoading ? '测试中…' : '测试连接'}
             </Button>
             {testResult && (
               <div className={`text-sm py-2 px-3 rounded-md font-medium ${testResult.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
@@ -181,14 +182,15 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
       </Card>
 
       <Card>
+        <details><summary className="cursor-pointer p-6 font-medium">高级参数</summary>
         <CardHeader>
-          <CardTitle className="text-orange-950">🧶 Generation Defaults</CardTitle>
-          <CardDescription className="text-orange-900/60">Configure how explanations are generated by default.</CardDescription>
+          <CardTitle className="text-foreground"> 高级参数</CardTitle>
+          <CardDescription className="text-foreground">调整解释生成与缓存选项。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">Temperature</label>
+              <label className="text-sm font-semibold text-foreground">温度</label>
               <Input
                 type="number"
                 name="temperature"
@@ -200,7 +202,7 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">Max Tokens</label>
+              <label className="text-sm font-semibold text-foreground">最大输出 Token</label>
               <Input
                 type="number"
                 name="maxTokens"
@@ -209,21 +211,23 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
               />
             </div>
           </div>
-          
+
           <div className="grid gap-4 pt-4 sm:grid-cols-2">
-            <label className="flex cursor-pointer items-center space-x-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-4 text-sm font-semibold text-orange-950 transition-colors hover:bg-orange-100/70">
-              <input type="checkbox" name="cacheEnabled" checked={draft.cacheEnabled ?? true} onChange={handleChange} className="h-4 w-4 rounded text-orange-500 focus:ring-orange-400 accent-orange-500" />
-              <span>Enable AI Response Caching</span>
+            <label className="flex cursor-pointer items-center space-x-3 rounded-2xl border border-border bg-card p-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+              <input type="checkbox" name="cacheEnabled" checked={draft.cacheEnabled ?? true} onChange={handleChange} className="h-4 w-4 rounded text-primary focus:ring-primary accent-primary" />
+              <span>缓存 AI 解释</span>
             </label>
-            <label className="flex cursor-pointer items-center space-x-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-4 text-sm font-semibold text-orange-950 transition-colors hover:bg-orange-100/70">
-              <input type="checkbox" name="saveRequestInput" checked={draft.saveRequestInput ?? false} onChange={handleChange} className="h-4 w-4 rounded text-orange-500 focus:ring-orange-400 accent-orange-500" />
-              <span>Log Raw Request Intput</span>
+            <label className="flex cursor-pointer items-center space-x-3 rounded-2xl border border-border bg-card p-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+              <input type="checkbox" name="saveRequestInput" checked={draft.saveRequestInput ?? false} onChange={handleChange} className="h-4 w-4 rounded text-primary focus:ring-primary accent-primary" />
+              <span>记录原始请求内容</span>
             </label>
           </div>
         </CardContent>
-        <CardFooter className="justify-end border-t border-orange-200/70 bg-orange-50/70">
+        </details>
+        <CardFooter className="justify-end border-t border-border bg-card">
+          {saveError&&<p role="alert" className="mr-3 text-sm text-destructive">{saveError}</p>}
           <Button onClick={handleSave} disabled={loading} className="w-32">
-            {loading ? 'Saving...' : saveSuccess ? 'Saved ✓' : 'Save Settings'}
+            {loading ? '保存中…' : saveSuccess ? '已保存 ✓' : '保存设置'}
           </Button>
         </CardFooter>
       </Card>

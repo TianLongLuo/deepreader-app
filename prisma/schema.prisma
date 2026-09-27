@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================================
@@ -371,4 +371,12 @@ model ReadingEntry {
   @@index([userId, documentId])
   @@index([userId, kind, reviewAt])
   @@map("reading_entries")
+}
+
+model AuthAttempt {
+ key String @id
+ attempts Int @default(0)
+ expiresAt DateTime
+ @@index([expiresAt])
+ @@map("auth_attempts")
 }

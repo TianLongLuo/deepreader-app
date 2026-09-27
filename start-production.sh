@@ -8,6 +8,6 @@ HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-3000}"
 
 mkdir -p logs
-nohup npm run start -- --hostname "${HOST}" -p "${PORT}" > logs/app.out.log 2> logs/app.err.log &
+nohup node --env-file=.env.production node_modules/next/dist/bin/next start --hostname "${HOST}" -p "${PORT}" > logs/app.out.log 2> logs/app.err.log &
 echo $! > app.pid
 echo "Started with PID $(cat app.pid)"

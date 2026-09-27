@@ -36,7 +36,6 @@ type ConsoleSnapshot = {
     name: string | null;
     role: string;
     createdAt: string | Date;
-    passwordHash: string;
     lastLoginAt: string | Date | null;
     deepseekCalls: number;
     storageBytes: number;
@@ -71,6 +70,7 @@ export default function DracConsolePanel({
   const [mimoTest, setMimoTest] = useState('');
   const [isTestingMimo, setIsTestingMimo] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [userQuery,setUserQuery]=useState('');
   const [error, setError] = useState('');
 
   const handleConfigUpdate = (
@@ -122,7 +122,7 @@ export default function DracConsolePanel({
 
   const handleDeleteUser = (userId: string, email: string) => {
     const confirmed = window.confirm(
-      `Delete user ${email} and all of their books, sessions, AI settings, and workspace data?`
+      `删除用户 ${email} 及其全部书籍、登录会话、AI 设置和工作区数据？`
     );
 
     if (!confirmed) {
@@ -145,7 +145,7 @@ export default function DracConsolePanel({
           setError(
             'error' in payload && payload.error
               ? payload.error
-              : 'Failed to delete user'
+              : '删除用户失败'
           );
           return;
         }
@@ -192,36 +192,36 @@ export default function DracConsolePanel({
 
   return (
     <div className="relative z-10 space-y-8">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard
-          label="Registered Users"
+          label="注册用户"
           value={String(snapshot.totals.registeredUsers)}
         />
         <StatCard
-          label="AI Calls"
+          label="AI 调用"
           value={String(snapshot.totals.deepseekCalls)}
         />
-        <StatCard label="Books" value={String(snapshot.totals.books)} />
+        <StatCard label="书籍" value={String(snapshot.totals.books)} />
         <StatCard
-          label="Registration"
-          value={snapshot.adminConfig.allowRegistrations ? 'Open' : 'Closed'}
+          label="注册状态"
+          value={snapshot.adminConfig.allowRegistrations ? '开放' : '关闭'}
         />
         <StatCard
-          label="Active AI"
+          label="当前 AI"
           value={snapshot.adminConfig.globalAiProvider === 'mimo' ? 'MiMo' : snapshot.adminConfig.globalAiProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}
         />
         <StatCard
-          label="User AI Settings"
+          label="个人 AI 配置权限"
           value={
-            snapshot.adminConfig.allowUserAiSettings ? 'Enabled' : 'Disabled'
+            snapshot.adminConfig.allowUserAiSettings ? '已启用' : '已停用'
           }
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
         <ConfigCard
-          title="Registration Switch"
-          description="Close registration to hide sign up on the login page and block the signup API."
+          title="注册开关"
+          description="关闭后隐藏注册入口，并拒绝新的注册请求。"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Toggle
@@ -233,7 +233,7 @@ export default function DracConsolePanel({
                     allowRegistrations:
                       !snapshot.adminConfig.allowRegistrations,
                   },
-                  'Failed to update registration switch'
+                  '注册开关更新失败'
                 )
               }
             />
@@ -246,25 +246,25 @@ export default function DracConsolePanel({
                     allowRegistrations:
                       !snapshot.adminConfig.allowRegistrations,
                   },
-                  'Failed to update registration switch'
+                  '注册开关更新失败'
                 )
               }
             >
               {snapshot.adminConfig.allowRegistrations
-                ? 'Close Sign Up'
-                : 'Open Sign Up'}
+                ? '关闭注册'
+                : '开放注册'}
             </Button>
           </div>
         </ConfigCard>
 
         <ConfigCard
-          title="Shared Global AI"
-          description="Choose which shared AI provider all accounts use. The selected global key overrides per-user AI settings when shared AI is enabled."
+          title="共享 AI 服务"
+          description="选择共享的 AI 服务。启用共享后，全局配置优先于个人配置。"
         >
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">
-                Active Shared Provider
+              <label className="text-sm font-semibold text-foreground">
+                当前共享服务
               </label>
               <select
                 value={snapshot.adminConfig.globalAiProvider}
@@ -275,11 +275,11 @@ export default function DracConsolePanel({
                         | 'deepseek'
                         | 'gemini' | 'mimo',
                     },
-                    'Failed to update active shared AI provider'
+                    '共享服务更新失败'
                   )
                 }
                 disabled={isPending}
-                className="h-11 w-full rounded-2xl border border-orange-200 bg-orange-50/70 px-4 text-sm text-orange-950"
+                className="h-11 w-full rounded-2xl border border-border bg-card px-4 text-sm text-foreground"
               >
                 <option value="mimo">MiMo / Token Plan</option>
                 <option value="deepseek">DeepSeek Chat</option>
@@ -297,7 +297,7 @@ export default function DracConsolePanel({
                       shareGlobalDeepSeekWithUsers:
                         !snapshot.adminConfig.shareGlobalDeepSeekWithUsers,
                     },
-                    'Failed to update shared AI switch'
+                    '共享 AI 状态更新失败'
                   )
                 }
               />
@@ -310,27 +310,27 @@ export default function DracConsolePanel({
                       shareGlobalDeepSeekWithUsers:
                         !snapshot.adminConfig.shareGlobalDeepSeekWithUsers,
                     },
-                    'Failed to update shared AI switch'
+                    '共享 AI 状态更新失败'
                   )
                 }
               >
                 {snapshot.adminConfig.shareGlobalDeepSeekWithUsers
-                  ? 'Disable Shared AI'
-                  : 'Enable Shared AI'}
+                  ? '关闭共享 AI'
+                  : '开启共享 AI'}
               </Button>
             </div>
 
-            <div className="space-y-3 border-t border-orange-200/70 pt-4">
-              <div role="status" className="space-y-1 rounded-2xl border border-orange-200 bg-orange-50 p-3 text-sm">
+            <div className="space-y-3 border-t border-border pt-4">
+              <div role="status" className="space-y-1 rounded-2xl border border-border bg-card p-3 text-sm">
                 <p>MiMo 密钥：{snapshot.adminConfig.hasGlobalMimoApiKey ? '已保存' : '未保存'}</p>
                 <p>当前活动服务：{snapshot.adminConfig.globalAiProvider === 'mimo' ? 'MiMo' : snapshot.adminConfig.globalAiProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}</p>
                 <p>全局 AI 共享：{snapshot.adminConfig.shareGlobalDeepSeekWithUsers ? '已开启' : '已关闭'}</p>
-                {!snapshot.adminConfig.shareGlobalDeepSeekWithUsers && <p className="text-orange-800">共享关闭时，普通用户无法使用此全局 MiMo 配置。保存并启用不会自动打开共享。</p>}
-                {snapshot.adminConfig.globalAiProvider !== 'mimo' && <p className="text-orange-800">已保存或测试成功不代表前端使用 MiMo；请保存并启用 MiMo。</p>}
+                {!snapshot.adminConfig.shareGlobalDeepSeekWithUsers && <p className="text-muted-foreground">共享关闭时，普通用户无法使用此全局 MiMo 配置。保存并启用不会自动打开共享。</p>}
+                {snapshot.adminConfig.globalAiProvider !== 'mimo' && <p className="text-muted-foreground">已保存或测试成功不代表前端使用 MiMo；请保存并启用 MiMo。</p>}
                 {(mimoKey.trim() || mimoModel !== snapshot.adminConfig.globalMimoModel || mimoBaseUrl !== snapshot.adminConfig.globalMimoBaseUrl) && <p>表单有未保存的更改；测试使用已保存配置。</p>}
               </div>
               <label htmlFor="mimo-endpoint" className="text-sm font-semibold">MiMo 接入方式</label>
-              <select id="mimo-endpoint" value={mimoBaseUrl} onChange={e=>setMimoBaseUrl(e.target.value)} disabled={isPending} className="h-11 w-full rounded-2xl border border-orange-200 px-3">
+              <select id="mimo-endpoint" value={mimoBaseUrl} onChange={e=>setMimoBaseUrl(e.target.value)} disabled={isPending} className="h-11 w-full rounded-2xl border border-border px-3">
                 <option value="https://api.xiaomimimo.com/v1">按量付费 API</option>
                 <option value="https://token-plan-cn.xiaomimimo.com/v1">Token Plan · 中国</option>
                 <option value="https://token-plan-sgp.xiaomimimo.com/v1">Token Plan · 新加坡</option>
@@ -340,7 +340,7 @@ export default function DracConsolePanel({
               <Input id="mimo-model" value={mimoModel} onChange={e=>setMimoModel(e.target.value)} placeholder="mimo-v2.6-pro" disabled={isPending} />
               <label htmlFor="mimo-key" className="text-sm font-semibold">MiMo API Key</label>
               <Input id="mimo-key" type="password" autoComplete="off" value={mimoKey} onChange={e=>setMimoKey(e.target.value)} placeholder={snapshot.adminConfig.globalMimoApiKeyPreview || 'sk-… / tp-… / ttp-…'} disabled={isPending} />
-              <p className="text-xs text-orange-900/60">模型名和地区以 MiMo 控制台为准。Token Plan 使用专属密钥，与按量付费密钥不可混用。留空保留已保存密钥。</p>
+              <p className="text-xs text-foreground">模型名和地区以 MiMo 控制台为准。Token Plan 使用专属密钥，与按量付费密钥不可混用。留空保留已保存密钥。</p>
               <div className="flex flex-wrap gap-2">
                 <Button disabled={isPending || !mimoModel.trim()} onClick={()=>handleConfigUpdate({globalMimoApiKey:mimoKey || undefined,globalMimoModel:mimoModel,globalMimoBaseUrl:mimoBaseUrl},'保存 MiMo 配置失败',()=>{setMimoKey('');setMimoTest('');})}>保存 MiMo 配置</Button>
                 <Button disabled={isPending || !mimoModel.trim() || (!mimoKey.trim() && !snapshot.adminConfig.hasGlobalMimoApiKey)} onClick={()=>handleConfigUpdate({globalMimoApiKey:mimoKey.trim() || undefined,globalMimoModel:mimoModel.trim(),globalMimoBaseUrl:mimoBaseUrl,globalAiProvider:'mimo'},'保存并启用 MiMo 失败',()=>{setMimoKey('');setMimoTest('MiMo 配置已保存并设为当前活动服务。请检查全局 AI 共享状态，并在阅读器发起新请求验证本次模型。');})}>保存并启用 MiMo</Button>
@@ -353,9 +353,9 @@ export default function DracConsolePanel({
               {mimoTest && <p role="status" className="text-sm">{mimoTest}</p>}
             </div>
 
-            <div className="space-y-2 border-t border-orange-200/70 pt-4">
-              <label className="text-sm font-semibold text-orange-900/65">
-                Global DeepSeek API Key
+            <div className="space-y-2 border-t border-border pt-4">
+              <label className="text-sm font-semibold text-foreground">
+                全局 DeepSeek 密钥
               </label>
               <Input
                 type="password"
@@ -368,10 +368,10 @@ export default function DracConsolePanel({
                 }
                 disabled={isPending}
               />
-              <p className="text-xs text-orange-900/50">
+              <p className="text-xs text-foreground">
                 {snapshot.adminConfig.hasGlobalDeepseekApiKey
-                  ? `Saved key: ${snapshot.adminConfig.globalDeepseekApiKeyPreview}`
-                  : 'No global DeepSeek key saved yet.'}
+                  ? `已保存密钥：${snapshot.adminConfig.globalDeepseekApiKeyPreview}`
+                  : '尚未保存全局 DeepSeek 密钥。'}
               </p>
             </div>
 
@@ -383,7 +383,7 @@ export default function DracConsolePanel({
                     {
                       globalDeepseekApiKey: globalDeepseekApiKeyDraft,
                     },
-                    'Failed to save global DeepSeek API key',
+                    '保存 DeepSeek 密钥失败',
                     () => setGlobalDeepseekApiKeyDraft('')
                   )
                 }
@@ -398,18 +398,18 @@ export default function DracConsolePanel({
                     {
                       clearGlobalDeepseekApiKey: true,
                     },
-                    'Failed to clear global DeepSeek API key',
+                    '清除 DeepSeek 密钥失败',
                     () => setGlobalDeepseekApiKeyDraft('')
                   )
                 }
               >
-                Clear DeepSeek Key
+                清除 DeepSeek 密钥
               </Button>
             </div>
 
-            <div className="space-y-2 border-t border-orange-200/70 pt-4">
-              <label className="text-sm font-semibold text-orange-900/65">
-                Global Gemini Model
+            <div className="space-y-2 border-t border-border pt-4">
+              <label className="text-sm font-semibold text-foreground">
+                全局 Gemini 模型
               </label>
               <Input
                 value={globalGeminiModelDraft}
@@ -422,8 +422,8 @@ export default function DracConsolePanel({
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-orange-900/65">
-                Global Gemini API Key
+              <label className="text-sm font-semibold text-foreground">
+                全局 Gemini 密钥
               </label>
               <Input
                 type="password"
@@ -436,10 +436,10 @@ export default function DracConsolePanel({
                 }
                 disabled={isPending}
               />
-              <p className="text-xs text-orange-900/50">
+              <p className="text-xs text-foreground">
                 {snapshot.adminConfig.hasGlobalGeminiApiKey
-                  ? `Saved key: ${snapshot.adminConfig.globalGeminiApiKeyPreview}`
-                  : 'No global Gemini key saved yet.'}
+                  ? `已保存密钥：${snapshot.adminConfig.globalGeminiApiKeyPreview}`
+                  : '尚未保存全局 Gemini 密钥。'}
               </p>
             </div>
 
@@ -460,7 +460,7 @@ export default function DracConsolePanel({
                           : undefined,
                       globalGeminiModel: globalGeminiModelDraft,
                     },
-                    'Failed to save global Gemini settings',
+                    '保存 Gemini 配置失败',
                     () => setGlobalGeminiApiKeyDraft('')
                   )
                 }
@@ -475,20 +475,20 @@ export default function DracConsolePanel({
                     {
                       clearGlobalGeminiApiKey: true,
                     },
-                    'Failed to clear global Gemini API key',
+                    '清除 Gemini 密钥失败',
                     () => setGlobalGeminiApiKeyDraft('')
                   )
                 }
               >
-                Clear Gemini Key
+                清除 Gemini 密钥
               </Button>
             </div>
           </div>
         </ConfigCard>
 
         <ConfigCard
-          title="User AI Settings"
-          description="When enabled, all users can see the AI Settings page in the sidebar and save their own API keys."
+          title="个人 AI 配置权限"
+          description="允许用户编辑个人 AI 配置；外观与阅读偏好始终可用。"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Toggle
@@ -500,7 +500,7 @@ export default function DracConsolePanel({
                     allowUserAiSettings:
                       !snapshot.adminConfig.allowUserAiSettings,
                   },
-                  'Failed to update user AI settings switch'
+                  '个人配置权限更新失败'
                 )
               }
             />
@@ -513,18 +513,17 @@ export default function DracConsolePanel({
                     allowUserAiSettings:
                       !snapshot.adminConfig.allowUserAiSettings,
                   },
-                  'Failed to update user AI settings switch'
+                  '个人配置权限更新失败'
                 )
               }
             >
               {snapshot.adminConfig.allowUserAiSettings
-                ? 'Disable User AI Settings'
-                : 'Enable User AI Settings'}
+                ? '关闭个人配置'
+                : '开放个人配置'}
             </Button>
           </div>
-          <p className="mt-4 text-xs text-orange-900/50">
-            If shared global AI is on, the saved global key still takes priority.
-            If both switches are off, only `admin@qq.com` can use AI features.
+          <p className="mt-4 text-xs text-foreground">
+            共享 AI 开启时优先使用全局配置。两项均关闭时，仅管理员可以使用 AI 功能。
           </p>
         </ConfigCard>
       </div>
@@ -533,79 +532,77 @@ export default function DracConsolePanel({
         <p className="text-sm text-destructive">{error}</p>
       ) : null}
 
-      <div className="rounded-[2rem] border border-orange-200/80 bg-white/80 p-6 shadow-xl shadow-orange-200/35 backdrop-blur-xl">
-        <h2 className="text-xl font-bold text-orange-950">🐾 Latest Login</h2>
-        <p className="mt-2 text-sm text-orange-900/55">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm  backdrop-blur-xl">
+        <h2 className="text-xl font-bold text-foreground"> 最近登录</h2>
+        <p className="mt-2 text-sm text-foreground">
           {snapshot.latestLogin
-            ? `${snapshot.latestLogin.name || 'Unnamed user'} (${snapshot.latestLogin.email}) at ${new Date(snapshot.latestLogin.at).toLocaleString()}`
-            : 'No login record yet'}
+            ? `${snapshot.latestLogin.name || '未命名用户'} (${snapshot.latestLogin.email}) at ${new Date(snapshot.latestLogin.at).toLocaleString()}`
+            : '暂无登录记录'}
         </p>
       </div>
 
-      <div className="rounded-[2rem] border border-orange-200/80 bg-white/80 p-6 shadow-xl shadow-orange-200/35 backdrop-blur-xl">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm  backdrop-blur-xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-orange-950">🐱 Users</h2>
-            <p className="mt-2 text-sm text-orange-900/55">
-              Passwords are stored as one-way hashes only. Plaintext passwords
-              cannot be recovered and are not shown here.
+            <h2 className="text-xl font-bold text-foreground"> 用户</h2><input aria-label="搜索用户" placeholder="搜索用户" className="native-field mt-3" value={userQuery} onChange={e=>setUserQuery(e.target.value)}/>
+            <p className="mt-2 text-sm text-foreground">
+              密码仅以单向哈希保存，后台不会显示明文密码。
             </p>
           </div>
         </div>
 
         <div className="mt-6 grid gap-4">
-          {snapshot.users.map((user) => (
+          {snapshot.users.filter(user=>(user.email+' '+user.name).toLowerCase().includes(userQuery.toLowerCase())).map((user) => (
             <div
               key={user.id}
-              className="rounded-2xl border border-orange-200/70 bg-orange-50/60 p-5"
+              className="rounded-2xl border border-border bg-card p-5"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <h3 className="text-lg font-semibold">
-                    {user.name || 'Unnamed user'}
+                    {user.name || '未命名用户'}
                   </h3>
-                  <p className="text-sm text-orange-900/55">{user.email}</p>
+                  <p className="text-sm text-foreground">{user.email}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge label={user.role} />
-                  <Badge label={`${user.deepseekCalls} AI calls`} />
-                  <Badge label={`${user.books.length} books`} />
-                  <Badge label={`${formatBytes(user.storageBytes)} storage`} />
+                  <Badge label={`${user.deepseekCalls} 次 AI 调用`} />
+                  <Badge label={`${user.books.length} 本书`} />
+                  <Badge label={`${formatBytes(user.storageBytes)} 存储`} />
                   <Button
                     variant="destructive"
                     size="sm"
                     disabled={isPending}
                     onClick={() => handleDeleteUser(user.id, user.email)}
                   >
-                    Delete User
+                    删除用户
                   </Button>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <InfoRow
-                  label="Registered"
+                  label="注册时间"
                   value={new Date(user.createdAt).toLocaleString()}
                 />
                 <InfoRow
-                  label="Last Login"
+                  label="最近登录"
                   value={
                     user.lastLoginAt
                       ? new Date(user.lastLoginAt).toLocaleString()
-                      : 'Never'
+                      : '尚未登录'
                   }
                 />
-                <InfoRow label="Password Hash" value={user.passwordHash} />
                 <InfoRow
-                  label="AI Calls"
+                  label="AI 调用"
                   value={String(user.deepseekCalls)}
                 />
                 <InfoRow
-                  label="Storage Used"
+                  label="存储占用"
                   value={formatBytes(user.storageBytes)}
                 />
                 <InfoRow
-                  label="Books"
+                  label="书籍"
                   value={
                     user.books.length > 0
                       ? user.books
@@ -614,7 +611,7 @@ export default function DracConsolePanel({
                               `${book.title} (${book.fileType}, ${formatBytes(book.fileSize)})`
                           )
                           .join(' / ')
-                      : 'No books yet'
+                      : '暂无书籍'
                   }
                 />
               </div>
@@ -628,9 +625,9 @@ export default function DracConsolePanel({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[2rem] border border-orange-200/80 bg-white/80 p-5 shadow-xl shadow-orange-200/35 backdrop-blur-xl">
-      <p className="text-sm font-semibold text-orange-900/55">{label}</p>
-      <p className="mt-3 break-words text-2xl font-black text-orange-950 xl:text-3xl">{value}</p>
+    <div className="rounded-xl border border-border bg-card p-5 shadow-sm  backdrop-blur-xl">
+      <p className="text-sm font-semibold text-foreground">{label}</p>
+      <p className="mt-3 break-words text-2xl font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -645,10 +642,10 @@ function ConfigCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-[2rem] border border-orange-200/80 bg-white/80 p-6 shadow-xl shadow-orange-200/35 backdrop-blur-xl">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm  backdrop-blur-xl">
       <div>
-        <h2 className="text-xl font-bold text-orange-950">{title}</h2>
-        <p className="mt-2 text-sm text-orange-900/55">{description}</p>
+        <h2 className="text-xl font-bold text-foreground">{title}</h2>
+        <p className="mt-2 text-sm text-foreground">{description}</p>
       </div>
       <div className="mt-5">{children}</div>
     </div>
@@ -671,13 +668,13 @@ function Toggle({
       onClick={onToggle}
       className={`relative inline-flex h-8 w-16 items-center rounded-full border transition-colors ${
         checked
-          ? 'border-orange-400 bg-orange-400/80'
-          : 'border-orange-200 bg-orange-100'
+          ? 'border-primary bg-primary'
+          : 'border-border bg-muted'
       }`}
       disabled={disabled}
     >
       <span
-        className={`inline-block h-6 w-6 rounded-full bg-white shadow transition-transform ${
+        className={`inline-block h-6 w-6 rounded-full bg-card shadow transition-transform ${
           checked ? 'translate-x-9' : 'translate-x-1'
         }`}
       />
@@ -687,7 +684,7 @@ function Toggle({
 
 function Badge({ label }: { label: string }) {
   return (
-    <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">
+    <span className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-primary">
       {label}
     </span>
   );
@@ -695,8 +692,8 @@ function Badge({ label }: { label: string }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-orange-200/70 bg-white/60 p-3">
-      <p className="text-xs uppercase tracking-wide text-orange-900/45">
+    <div className="rounded-2xl border border-border bg-card p-3">
+      <p className="text-xs uppercase tracking-wide text-foreground">
         {label}
       </p>
       <p className="mt-2 break-all text-sm">{value}</p>

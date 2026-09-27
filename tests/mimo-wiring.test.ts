@@ -31,7 +31,7 @@ it.each(['en','es'] as const)('wires saved active MiMo through every frontend mo
  for(const [url,options] of mocks.fetch.mock.calls){const payload=JSON.parse(options.body);expect(url).toBe(MIMO_BASE_URLS.cn+'/chat/completions');expect(options.headers['api-key']).toBe(key);expect(payload.model).toBe('mimo-v2.6-pro');expect(payload.max_completion_tokens).toBeGreaterThan(0);expect(payload.max_tokens).toBeUndefined();expect(payload.thinking).toEqual({type:'disabled'});expect(JSON.parse(payload.messages[1].content).sourceLanguage).toBe(language);}
 });
 it('admin connection test and frontend use the same saved MiMo endpoint/key/model',async()=>{
- await configure();expect((await testSaved()).status).toBe(200);expect((await reading(request('quick'))).status).toBe(200);
+ await configure();expect((await testSaved(new Request('http://localhost/api/dracconsole/config/test',{method:'POST'}))).status).toBe(200);expect((await reading(request('quick'))).status).toBe(200);
  expect(mocks.fetch).toHaveBeenCalledTimes(2);const [adminCall,readerCall]=mocks.fetch.mock.calls;
  expect(adminCall[0]).toBe(readerCall[0]);expect(adminCall[1].headers['api-key']).toBe(readerCall[1].headers['api-key']);expect(JSON.parse(adminCall[1].body).model).toBe(JSON.parse(readerCall[1].body).model);
 });

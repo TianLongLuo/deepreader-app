@@ -1,4 +1,8 @@
 'use client';
+import { viewportAnchor, type StudyAnchor } from './floating-study-layout';
+import {createAnchorHandle,type AnchorHandle} from './selection-anchor';
+import StudyDock from './study-dock';
+import { wordAtPoint, highlightWord, oppositeSide } from './study-interaction';
 
 import {
   type MouseEvent as ReactMouseEvent,
@@ -20,6 +24,8 @@ import PdfOriginalView from './pdf-original-view';
 import ReaderToolbar from './reader-toolbar';
 import { formatPdfPageLocation, parsePdfPageLocation, pdfPageProgress } from './pdf-location';
 import { createProgressSync } from './progress-sync';
+import WordLookupContent from './word-lookup-content';
+import ReaderUtilities from './reader-utilities';
 import ReadingTools, { readingRequest, type ReadingEntry, type ReadingSelection } from './reading-tools';
 import type { ParagraphExplanationOutput } from '@/types/explanation';
 import { getActionAnnotationStyle } from './action-annotation-style';
@@ -140,6 +146,7 @@ type ActiveFocusTarget =
     };
 
 type ReaderDocument = {
+  language?: string | null;
   id: string;
   title: string;
   fileType: string;
@@ -157,6 +164,7 @@ type RenditionLike = {
   on?: (event: string, callback: (value: {start?:{cfi?:string;percentage?:number;index?:number};end?:unknown}) => void) => void;
   book?: {
     ready?: Promise<unknown>;
+    loaded?: { metadata?: Promise<{language?:string}> };
     locations?: { generate: (chars: number) => Promise<unknown>; percentageFromCfi: (cfi: string) => number };
     section: {
       (target: string): { href: string; index: number } | null;
@@ -215,12 +223,12 @@ const INTERACTIVE_PARAGRAPH_CSS = `
   }
 
   [data-reader-interactive='true'][data-reader-hovered='true'] {
-    background: rgba(251, 146, 60, 0.16) !important;
+    background: rgba(0, 122, 255, 0.10) !important;
     box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.24);
   }
 
   [data-reader-interactive='true'][data-reader-active='true'] {
-    background: rgba(251, 146, 60, 0.18) !important;
+    background: rgba(0, 122, 255, 0.16) !important;
     box-shadow:
       inset 0 0 0 1px rgba(234, 88, 12, 0.38),
       0 8px 24px rgba(154, 52, 18, 0.10);
@@ -251,27 +259,27 @@ const globalEpubCssOverrides = {
 };
 
 const themeClasses: Record<ReaderTheme, string> = {
-  light: 'bg-[#fff7ed] text-orange-950',
-  dark: 'bg-[#1c120d] text-orange-50',
-  sepia: 'bg-[#fff3df] text-orange-950',
+  light: 'bg-[#fcfcfa] text-[#242424]',
+  dark: 'bg-[#171717] text-[#e8e8e5]',
+  sepia: 'bg-[#f5efdf] text-[#433b2c]',
 };
 
 const pdfReaderPageMetaClasses: Record<ReaderTheme, string> = {
-  light: 'text-orange-900/45',
-  dark: 'text-orange-100/45',
+  light: 'text-foreground',
+  dark: 'text-muted-foreground',
   sepia: 'text-[#433422]/50',
 };
 
 const pdfReaderParagraphClasses: Record<ReaderTheme, string> = {
-  light: 'hover:bg-orange-200/35 focus-visible:ring-orange-400/60',
-  dark: 'hover:bg-orange-300/10 focus-visible:ring-orange-300/60',
-  sepia: 'hover:bg-orange-200/35 focus-visible:ring-orange-400/50',
+  light: 'hover:bg-muted focus-visible:ring-primary',
+  dark: 'hover:bg-muted focus-visible:ring-border',
+  sepia: 'hover:bg-muted focus-visible:ring-primary',
 };
 
 const pdfReaderActiveParagraphClasses: Record<ReaderTheme, string> = {
-  light: 'bg-orange-200/45 ring-1 ring-orange-400/40',
-  dark: 'bg-orange-300/12 ring-1 ring-orange-300/35',
-  sepia: 'bg-orange-200/45 ring-1 ring-orange-400/35',
+  light: 'bg-muted ring-1 ring-primary',
+  dark: 'bg-muted ring-1 ring-border',
+  sepia: 'bg-muted ring-1 ring-primary',
 };
 
 function buildThemeDefinition(theme: ReaderTheme) {
@@ -279,17 +287,17 @@ function buildThemeDefinition(theme: ReaderTheme) {
     case 'dark':
       return {
         ...globalEpubCssOverrides,
-        body: { background: '#1c120d !important', color: '#fff7ed !important' },
+        body: { background: '#171717 !important', color: '#e8e8e5 !important' },
       };
     case 'sepia':
       return {
         ...globalEpubCssOverrides,
-        body: { background: '#fff3df !important', color: '#431407 !important' },
+        body: { background: '#f5efdf !important', color: '#242424 !important' },
       };
     default:
       return {
         ...globalEpubCssOverrides,
-        body: { background: '#fffaf3 !important', color: '#431407 !important' },
+        body: { background: '#fcfcfa !important', color: '#242424 !important' },
       };
   }
 }
@@ -301,7 +309,7 @@ function getReaderTheme(theme: ReaderTheme) {
         ...ReactReaderStyle,
         readerArea: {
           ...ReactReaderStyle.readerArea,
-          backgroundColor: '#1c120d',
+          backgroundColor: '#171717',
         },
       };
     case 'sepia':
@@ -309,7 +317,7 @@ function getReaderTheme(theme: ReaderTheme) {
         ...ReactReaderStyle,
         readerArea: {
           ...ReactReaderStyle.readerArea,
-          backgroundColor: '#fff3df',
+          backgroundColor: '#f5efdf',
         },
       };
     default:
@@ -317,7 +325,7 @@ function getReaderTheme(theme: ReaderTheme) {
         ...ReactReaderStyle,
         readerArea: {
           ...ReactReaderStyle.readerArea,
-          backgroundColor: '#fffaf3',
+          backgroundColor: '#fcfcfa',
         },
       };
   }
@@ -675,7 +683,7 @@ function renderPdfAnnotatedText(
           focused ? (
             <span
               key={`${key}-${segmentIndex}`}
-              className="rounded bg-orange-300/20 text-inherit"
+              className="rounded bg-muted text-inherit"
             >
               {content}
             </span>
@@ -1099,10 +1107,14 @@ export default function ReaderLayout({
     setExplanationPanelSize,
   } = useReaderStore();
 
-  useEffect(()=>{const language=validSourceLanguage(new URLSearchParams(window.location.search).get('sourceLanguage'));if(language)setSourceLanguage(language);},[setSourceLanguage]);
+  useEffect(()=>{const language=validSourceLanguage(new URLSearchParams(window.location.search).get('sourceLanguage')) || validSourceLanguage(document.language ?? null) || 'en';setSourceLanguage(language);},[setSourceLanguage,document.id,document.language]);
+  const [utilityOpen,setUtilityOpen]=useState(false);
+  const [utilityTab,setUtilityTab]=useState('ai');
+  useEffect(()=>{useReaderStore.getState().setStudyPinned(false);return()=>{useReaderStore.getState().setStudyPinned(false);};},[document.id]);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [showDetailed, setShowDetailed] = useState(false);
   const [toolSelection, setToolSelection] = useState<ReadingSelection|null>(null);
+  useEffect(()=>()=>toolSelection?.anchorHandle?.dispose(),[toolSelection?.anchorHandle]);
   const [entries, setEntries] = useState<ReadingEntry[]>([]);
   const [readingReady, setReadingReady] = useState(false);
   const [syncError, setSyncError] = useState('');
@@ -1135,21 +1147,11 @@ export default function ReaderLayout({
     anchorY: number;
     paragraphBounds: ParagraphBounds;
   } | null>(null);
-  const [panelFrame, setPanelFrame] = useState<PanelFrame>({
-    width: explanationPanelWidth || PANEL_DEFAULT_FRAME.width,
-    height: explanationPanelHeight || PANEL_DEFAULT_FRAME.height,
-  });
   const [viewportFrame, setViewportFrame] = useState({
     width: 1280,
     height: 900,
   });
   const [navigationTarget, setNavigationTarget] = useState<string | number | null>(null);
-  const [resizeState, setResizeState] = useState<ResizeState | null>(null);
-  const [dragState, setDragState] = useState<DragState | null>(null);
-  const [manualPanelPosition, setManualPanelPosition] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [immersive, setImmersive] = useState(false);
@@ -1167,8 +1169,7 @@ export default function ReaderLayout({
     }
     pdfOriginalPageRef.current = page;
     setPdfOriginalPageState(page);
-    setToolSelection(null);
-    setToolsOpen(false);
+    if(!useReaderStore.getState().studyPinned){setToolSelection(null);setToolsOpen(false);}
   }, []);
   const [pdfJumpError, setPdfJumpError] = useState('');
   const pdfViewModeRef = useRef<'text' | 'original'>('text');
@@ -1217,7 +1218,6 @@ export default function ReaderLayout({
   const lastWheelNavigationAtRef = useRef(0);
   const currentLocationRef = useRef<string | number>(location);
 
-  const clampedPanelFrame = clampPanelFrame(panelFrame, viewportFrame);
   const pdfPageGroups = useMemo(
     () => groupPdfParagraphsByPage(pdfTextState.paragraphs),
     [pdfTextState.paragraphs]
@@ -1330,14 +1330,15 @@ export default function ReaderLayout({
           : 'right';
       const paragraphBounds = toContainerBounds(rect, containerRect, frameRect);
       const anchorY = paragraphBounds.top + (paragraphBounds.bottom - paragraphBounds.top) / 2;
-      setManualPanelPosition(null);
       activeExplanationRef.current = null;
       activeSentenceIndexRef.current = null;
       activeFocusTargetRef.current = null;
       setActiveSentenceIndex(null);
       setActiveFocusTarget(null);
-      setShowDetailed(false);
-      setToolsOpen(true);
+      useReaderStore.getState().setLearningDepth('grammar');
+      setShowDetailed(true);
+      setToolsOpen(false);
+      setToolSelection({kind:'paragraph',anchorHandle:createAnchorHandle(element,undefined,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===element.textContent)??null),anchor:viewportAnchor(rect,frameRect),side:preferredPanelSide,text:mapping.text,location:cfiRange,previousText:element.previousElementSibling?.textContent||'',nextText:element.nextElementSibling?.textContent||'',chapterText:element.ownerDocument.body.textContent||mapping.text});
       setSelectedParagraph({
         key: cfiRange,
         text: mapping.text,
@@ -1369,14 +1370,16 @@ export default function ReaderLayout({
           ? 'left'
           : 'right';
 
-      setManualPanelPosition(null);
       activeExplanationRef.current = null;
       activeSentenceIndexRef.current = null;
       activeFocusTargetRef.current = null;
       setActiveSentenceIndex(null);
       setActiveFocusTarget(null);
-      setShowDetailed(false);
-      setToolsOpen(true);
+      useReaderStore.getState().setLearningDepth('grammar');
+      setShowDetailed(true);
+      setToolsOpen(false);
+      const index = pdfTextState.paragraphs.indexOf(paragraph);
+      setToolSelection({kind:'paragraph',anchorHandle:createAnchorHandle(element),anchor:viewportAnchor(rect),side:preferredPanelSide,text,location:getPdfSelectionKey(document.id,paragraph.id),previousText:pdfTextState.paragraphs[index-1]?.text,nextText:pdfTextState.paragraphs[index+1]?.text,chapterText:pdfTextState.paragraphs.filter(p=>p.pageNumber===paragraph.pageNumber).map(p=>p.text).join('\n')});
       setSelectedParagraph({
         key: getPdfSelectionKey(document.id, paragraph.id),
         text,
@@ -1387,8 +1390,16 @@ export default function ReaderLayout({
         paragraphBounds,
       });
     },
-    [clearUnderlineAnnotations, document.id, viewportFrame.width]
+    [clearUnderlineAnnotations, document.id, viewportFrame.width, pdfTextState.paragraphs]
   );
+
+  const openWord = useCallback((text: string, location: string, contextText: string, x: number, previousText = '', nextText = '', anchor?:StudyAnchor,anchorHandle?:AnchorHandle) => {
+    closeExplanationPanel();
+    const rect = containerRef.current?.getBoundingClientRect();
+    setToolSelection({kind:'word',anchorHandle,anchor,text,location,contextText,previousText,nextText,side:oppositeSide(x,rect?.left||0,rect?.width||window.innerWidth)});
+    setShowDetailed(false);
+    setToolsOpen(true);
+  }, [closeExplanationPanel]);
 
   const handlePdfParagraphClick = useCallback(
     (
@@ -1396,10 +1407,16 @@ export default function ReaderLayout({
       event: ReactMouseEvent<HTMLButtonElement>
     ) => {
       const selected = window.getSelection()?.toString().trim();
-      if (selected) {setToolSelection({text:selected,location:getPdfSelectionKey(document.id,paragraph.id),previousText:paragraph.text,chapterText:pdfTextState.paragraphs.filter(p=>p.pageNumber===paragraph.pageNumber).map(p=>p.text).join('\n')});setToolsOpen(true);return;}
+      const word = wordAtPoint(event.currentTarget.ownerDocument,event.clientX,event.clientY,event.currentTarget);
+      if (selected && /\s/.test(selected)) {openPdfParagraph(paragraph,event.currentTarget);return;}
+      if (selected || word) {
+        const index=pdfTextState.paragraphs.indexOf(paragraph);
+        openWord(selected || word!.word,getPdfSelectionKey(document.id,paragraph.id),paragraph.text,event.clientX,pdfTextState.paragraphs[index-1]?.text,pdfTextState.paragraphs[index+1]?.text,viewportAnchor(word?.rect ?? event.currentTarget.getBoundingClientRect()),createAnchorHandle(event.currentTarget,word?.range));
+        return;
+      }
       openPdfParagraph(paragraph, event.currentTarget);
     },
-    [openPdfParagraph, document.id, pdfTextState.paragraphs]
+    [openPdfParagraph, openWord, document.id, pdfTextState.paragraphs]
   );
 
   const getVisiblePdfBookmarkTarget = useCallback(() => {
@@ -1459,17 +1476,22 @@ export default function ReaderLayout({
 
   const installInteractiveParagraphs = useCallback((contents: EpubContents) => {
     contents.addStylesheetCss(
-      INTERACTIVE_PARAGRAPH_CSS,
+      INTERACTIVE_PARAGRAPH_CSS + ' ::highlight(reader-hover-word) {background-color:#c7dfff;color:#12243b;} [data-reader-interactive] {position:relative;} [data-reader-interactive]::before {content: "≡"; position:absolute;right:100%;top:0; padding:0 4px;font-size:12px;opacity:0;cursor:pointer;} [data-reader-interactive]:hover::before,[data-reader-interactive]:focus::before {opacity:.6;}',
       'reader-paragraph-interaction'
     );
 
+    if(contents.document.documentElement.dataset.nativeDismiss!=='true'){
+      contents.document.documentElement.dataset.nativeDismiss='true';
+      contents.document.addEventListener('click',event=>{if(!(event.target as Element).closest('[data-reader-interactive]')&&!useReaderStore.getState().studyPinned){setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}});
+      contents.document.addEventListener('keydown',event=>{if(event.key==='Escape'){setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}});
+    }
     const nodes = Array.from(
       contents.document.querySelectorAll(INTERACTIVE_PARAGRAPH_SELECTOR)
     ) as HTMLElement[];
 
     nodes.forEach((element) => {
       const mapping = buildNormalizedTextMap(element);
-      if (!mapping || mapping.text.length < MIN_INTERACTIVE_PARAGRAPH_LENGTH) {
+      if (!mapping || !mapping.text) {
         return;
       }
 
@@ -1477,6 +1499,9 @@ export default function ReaderLayout({
         return;
       }
 
+      element.tabIndex = 0;
+      element.title = '点击单词查词；点击段落边缘或按 Enter 分析整段';
+      element.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target===element){event.preventDefault();handleParagraphClick(element,contents);}});
       element.dataset.readerInteractive = 'true';
       setParagraphState(element, { hovered: false, active: false });
 
@@ -1489,7 +1514,9 @@ export default function ReaderLayout({
         setParagraphState(element, { hovered: true, active: false });
       });
 
+      element.addEventListener('mousemove', (event) => {const hit=wordAtPoint(contents.document,event.clientX,event.clientY,element);highlightWord(contents.document,hit?.range);});
       element.addEventListener('mouseleave', () => {
+        highlightWord(contents.document);
         if (activeElementRef.current === element) {
           setParagraphState(element, { hovered: false, active: true });
           return;
@@ -1504,13 +1531,19 @@ export default function ReaderLayout({
           return;
         }
 
-        if (contents.window.getSelection()?.toString().trim()) return;
+        if (contents.document.documentElement.dataset.readerSelectionConsumed === 'true' || contents.window.getSelection()?.toString().trim()) return;
         event.preventDefault();
         event.stopPropagation();
+        const hit=wordAtPoint(contents.document,event.clientX,event.clientY,element);
+        if(hit){
+          const frame=(contents.window.frameElement as Element|null)?.getBoundingClientRect();
+          openWord(hit.word,contents.cfiFromRange(hit.range),element.textContent||'',event.clientX+(frame?.left||0),element.previousElementSibling?.textContent||'',element.nextElementSibling?.textContent||'',viewportAnchor(hit.rect,frame),createAnchorHandle(element,hit.range,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===element.textContent)??null));
+          return;
+        }
         handleParagraphClick(element, contents);
       });
     });
-  }, [handleParagraphClick]);
+  }, [handleParagraphClick,openWord]);
 
   const installWheelNavigation = useCallback((contents: EpubContents) => {
     const root = contents.document.documentElement;
@@ -1855,299 +1888,15 @@ export default function ReaderLayout({
 
 
 
-  useEffect(() => {
-    if (!resizeState) {
-      return;
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerId !== resizeState.pointerId) {
-        return;
-      }
-
-      const deltaX = event.clientX - resizeState.startX;
-      const deltaY = event.clientY - resizeState.startY;
-      const nextWidth =
-        resizeState.side === 'right'
-          ? resizeState.startWidth - deltaX
-          : resizeState.startWidth + deltaX;
-      const nextHeight = resizeState.startHeight + deltaY;
-
-      setPanelFrame(
-        clampPanelFrame(
-          { width: nextWidth, height: nextHeight },
-          viewportFrame
-        )
-      );
-    };
-
-    const finishResize = (event: PointerEvent) => {
-      if (event.pointerId !== resizeState.pointerId) {
-        return;
-      }
-
-      setExplanationPanelSize(clampedPanelFrame);
-      setResizeState(null);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', finishResize);
-    window.addEventListener('pointercancel', finishResize);
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', finishResize);
-      window.removeEventListener('pointercancel', finishResize);
-    };
-  }, [
-    clampedPanelFrame,
-    resizeState,
-    setExplanationPanelSize,
-    viewportFrame,
-  ]);
-
-  useEffect(() => {
-    if (!dragState) {
-      return;
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerId !== dragState.pointerId) {
-        return;
-      }
-
-      const nextPosition = clampPanelPosition(
-        {
-          left: dragState.startLeft + event.clientX - dragState.startX,
-          top: dragState.startTop + event.clientY - dragState.startY,
-        },
-        clampedPanelFrame,
-        viewportFrame
-      );
-
-      setManualPanelPosition(nextPosition);
-    };
-
-    const finishDrag = (event: PointerEvent) => {
-      if (event.pointerId !== dragState.pointerId) {
-        return;
-      }
-
-      setDragState(null);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', finishDrag);
-    window.addEventListener('pointercancel', finishDrag);
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', finishDrag);
-      window.removeEventListener('pointercancel', finishDrag);
-    };
-  }, [clampedPanelFrame, dragState, viewportFrame]);
-
-  const panelTop = selectedParagraph
-    ? Math.min(
-        Math.max(
-          selectedParagraph.anchorY,
-          PANEL_EDGE_MARGIN + clampedPanelFrame.height / 2
-        ),
-        viewportFrame.height -
-          PANEL_EDGE_MARGIN -
-          clampedPanelFrame.height / 2
-      )
-    : viewportFrame.height / 2;
-
-  const resolvedPanelPlacement: {
-    side: PanelSide;
-    rect: ParagraphBounds;
-    frame: PanelFrame;
-  } = (() => {
-    if (!selectedParagraph) {
-      const fallbackParagraphBounds = {
-        left: viewportFrame.width / 2 - 120,
-        top: viewportFrame.height / 2 - 40,
-        right: viewportFrame.width / 2 + 120,
-        bottom: viewportFrame.height / 2 + 40,
-      };
-      const fallbackFrame = clampedPanelFrame;
-      return {
-        side: 'right',
-        rect: getPanelRect(
-          'right',
-          panelTop,
-          fallbackFrame,
-          viewportFrame,
-          fallbackParagraphBounds
-        ),
-        frame: fallbackFrame,
-      };
-    }
-
-    if (manualPanelPosition) {
-      const manualRect = clampPanelPosition(
-        manualPanelPosition,
-        clampedPanelFrame,
-        viewportFrame
-      );
-
-      return {
-        side:
-          manualRect.left >= selectedParagraph.paragraphBounds.right
-            ? 'right'
-            : 'left',
-        rect: {
-          left: manualRect.left,
-          top: manualRect.top,
-          right: manualRect.left + clampedPanelFrame.width,
-          bottom: manualRect.top + clampedPanelFrame.height,
-        },
-        frame: clampedPanelFrame,
-      };
-    }
-
-    const preferred = selectedParagraph.preferredPanelSide;
-    const candidateSides: PanelSide[] =
-      preferred === 'right' ? ['right', 'left'] : ['left', 'right'];
-    const candidates = candidateSides.map((side, sideIndex) => {
-      const availableWidth = getAvailableWidthForSide(
-        side,
-        selectedParagraph.paragraphBounds,
-        viewportFrame
-      );
-      const maxWidth = viewportFrame.width - PANEL_EDGE_MARGIN * 2;
-      const frame = {
-        width:
-          availableWidth > 0
-            ? Math.min(clampedPanelFrame.width, availableWidth, maxWidth)
-            : Math.min(clampedPanelFrame.width, maxWidth),
-        height: clampedPanelFrame.height,
-      };
-      const shortage = Math.max(0, clampedPanelFrame.width - availableWidth);
-      const rect = getPanelRect(
-        side,
-        panelTop,
-        frame,
-        viewportFrame,
-        selectedParagraph.paragraphBounds
-      );
-      const overlap = getIntersectionArea(rect, selectedParagraph.paragraphBounds);
-
-      return {
-        side,
-        rect,
-        frame,
-        overlap,
-        shortage,
-        preferredPenalty: sideIndex,
-      } satisfies PlacementCandidate;
-    });
-
-    const bestPlacement = candidates.reduce<PlacementCandidate | null>(
-      (best, candidate) => {
-        if (!best) {
-          return candidate;
-        }
-
-        if (candidate.overlap < best.overlap) {
-          return candidate;
-        }
-
-        if (
-          candidate.overlap === best.overlap &&
-          candidate.shortage < best.shortage
-        ) {
-          return candidate;
-        }
-
-        if (
-          candidate.overlap === best.overlap &&
-          candidate.shortage === best.shortage &&
-          candidate.preferredPenalty < best.preferredPenalty
-        ) {
-          return candidate;
-        }
-
-        return best;
-      },
-      null
-    );
-
-    if (bestPlacement) {
-      return {
-        side: bestPlacement.side,
-        rect: bestPlacement.rect,
-        frame: bestPlacement.frame,
-      };
-    }
-
-    return {
-      side: preferred,
-      rect: getPanelRect(
-        preferred,
-        panelTop,
-        clampedPanelFrame,
-        viewportFrame,
-        selectedParagraph.paragraphBounds
-      ),
-      frame: clampedPanelFrame,
-    };
-  })();
-
-  const resolvedPanelSide = resolvedPanelPlacement.side;
-  const resolvedPanelRect = resolvedPanelPlacement.rect;
-  const resolvedPanelFrame = resolvedPanelPlacement.frame;
-
-  const handleResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!selectedParagraph) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      setResizeState({
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        startWidth: resolvedPanelFrame.width,
-        startHeight: resolvedPanelFrame.height,
-        side: resolvedPanelSide,
-      });
-    },
-    [
-      resolvedPanelFrame.height,
-      resolvedPanelFrame.width,
-      resolvedPanelSide,
-      selectedParagraph,
-    ]
-  );
-
-  const handlePanelDragStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!selectedParagraph) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      setDragState({
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        startLeft: resolvedPanelRect.left,
-        startTop: resolvedPanelRect.top,
-      });
-    },
-    [resolvedPanelRect.left, resolvedPanelRect.top, selectedParagraph]
-  );
-
   const getRendition = (rendition: RenditionLike) => {
     renditionRef.current = rendition;
     registerThemes(rendition);
+    if (!validSourceLanguage(new URLSearchParams(window.location.search).get('sourceLanguage')) && !validSourceLanguage(document.language ?? null)) {
+      void rendition.book?.loaded?.metadata?.then(metadata => {
+        const language = validSourceLanguage(metadata.language?.toLowerCase().split(/[-_]/)[0] ?? null);
+        if (language && renditionRef.current === rendition) setSourceLanguage(language);
+      }).catch(()=>{});
+    }
     if (!hooksRegisteredRef.current) {
       void rendition.book?.ready?.then(async () => {
         await rendition.book?.locations?.generate(1600);
@@ -2172,13 +1921,24 @@ export default function ReaderLayout({
       rendition.hooks.content.register((contents: EpubContents) => {
         epubContentsRef.current = [...epubContentsRef.current.filter(c=>c.document.documentElement.isConnected),contents];
         contents.addStylesheetCss('body, p, li { font-size: '+typographyRef.current.fontSize+'px !important; line-height: '+typographyRef.current.lineHeight+' !important; }','reader-typography');
+        // Remove transient annotation nodes before a gesture starts so saved CFIs
+        // are always computed against the unannotated book DOM.
+        contents.document.addEventListener('pointerdown',()=>{
+          delete contents.document.documentElement.dataset.readerSelectionConsumed;
+          clearUnderlineAnnotations();
+        },true);
         contents.document.addEventListener('mouseup',()=>{
           const selected = contents.window.getSelection();const text=selected?.toString().trim();
           if(!text||!selected?.rangeCount)return;
-          const range=selected.getRangeAt(0);const parent=range.commonAncestorContainer.parentElement;
-          setToolSelection({text,location:contents.cfiFromRange(range),previousText:parent?.textContent||'',chapterText:contents.document.body.textContent||''});setToolsOpen(true);
+          contents.document.documentElement.dataset.readerSelectionConsumed = 'true';
+          const range=selected.getRangeAt(0);const ancestor=range.commonAncestorContainer;
+          const parent=ancestor.nodeType===1?ancestor as Element:ancestor.parentElement;
+          const block=parent?.closest('p,li,blockquote') as HTMLElement|null;
+          if(/\s/.test(text)&&block){handleParagraphClick(block,contents);return;}
+          const rect=range.getBoundingClientRect();const frame=(contents.window.frameElement as Element|null)?.getBoundingClientRect();
+          openWord(text,contents.cfiFromRange(range),block?.textContent||parent?.textContent||'',rect.left+(frame?.left||0),block?.previousElementSibling?.textContent||'',block?.nextElementSibling?.textContent||'',viewportAnchor(rect,frame),block?createAnchorHandle(block,range,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===block.textContent)??null):undefined);
         });
-        contents.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{if(entriesRef.current.some(e=>e.kind==='note'&&node.textContent?.includes(e.text)))node.style.boxShadow='inset 0 -2px #f97316';});
+        contents.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{if(entriesRef.current.some(e=>e.kind==='note'&&node.textContent?.includes(e.text)))node.style.boxShadow='inset 0 -2px #007aff';});
         installInteractiveParagraphs(contents);
         installWheelNavigation(contents);
       });
@@ -2245,7 +2005,7 @@ export default function ReaderLayout({
     const resolvedTarget = resolveNavigationTarget(renditionRef.current, normalizedTarget);
 
     setDrawerOpen(false);
-    closeExplanationPanel();
+    if(!useReaderStore.getState().studyPinned)closeExplanationPanel();
     setNavigationTarget(resolvedTarget);
 
     if (renditionRef.current) {
@@ -2416,24 +2176,15 @@ export default function ReaderLayout({
     return ()=>{clearInterval(timer);window.removeEventListener('pagehide',save);globalThis.document.removeEventListener('visibilitychange', onVisibilityChange);save();};
   },[readingReady,document.id,document.fileType,document.pageCount,pdfTextState.pageCount,getVisiblePdfBookmarkTarget,progressSync]);
   useEffect(()=>{
-    epubContentsRef.current.forEach(c=>c.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{node.style.boxShadow=entries.some(e=>e.kind==='note'&&node.textContent?.includes(e.text))?'inset 0 -2px #f97316':'';}));
+    epubContentsRef.current.forEach(c=>c.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{node.style.boxShadow=entries.some(e=>e.kind==='note'&&node.textContent?.includes(e.text))?'inset 0 -2px #007aff':'';}));
   },[entries]);
   useEffect(()=>{
     epubContentsRef.current.forEach(c=>c.addStylesheetCss('body, p, li {font-size:'+fontSize+'px !important;line-height:'+lineHeight+' !important;}','reader-typography'));
   },[fontSize,lineHeight]);
-  useEffect(()=>{
-    if(!selectedParagraph)return;
-    const index=pdfTextState.paragraphs.findIndex(p=>getPdfSelectionKey(document.id,p.id)===selectedParagraph.key);
-    const active=activeElementRef.current;
-    // Synchronize a selection made in the embedded EPUB document with the tools panel.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setToolSelection({text:selectedParagraph.text,location:selectedParagraph.key,
-      previousText:index>=0?pdfTextState.paragraphs[index-1]?.text:active?.previousElementSibling?.textContent||'',
-      nextText:index>=0?pdfTextState.paragraphs[index+1]?.text:active?.nextElementSibling?.textContent||'',
-      chapterText:index>=0?pdfTextState.paragraphs.filter(p=>p.pageNumber===pdfTextState.paragraphs[index].pageNumber).map(p=>p.text).join('\n'):active?.ownerDocument.body.textContent||selectedParagraph.text});
-  },[selectedParagraph,pdfTextState.paragraphs,document.id]);
+
 
   const handleLocationChanged = useCallback((nextLocation: string) => {
+    if(!useReaderStore.getState().studyPinned && currentLocationRef.current && nextLocation!==currentLocationRef.current){setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}
     if (navigationTarget) {
       if (nextLocation === currentLocationRef.current) {
         return;
@@ -2444,7 +2195,7 @@ export default function ReaderLayout({
 
     currentLocationRef.current = nextLocation;
     setLocation(nextLocation);
-  }, [navigationTarget]);
+  }, [navigationTarget, closeExplanationPanel]);
 
   const pdfTotal = pdfTextState.pageCount ?? document.pageCount ?? null;
   const currentPdfPage = pdfViewMode === 'original' ? pdfOriginalPage : pdfVisiblePage;
@@ -2468,7 +2219,7 @@ export default function ReaderLayout({
     });
   };
   const turnPage = (delta: number) => {
-    setToolsOpen(false);
+    if(!useReaderStore.getState().studyPinned){setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}
     if (document.fileType === 'EPUB') {
       if (delta < 0) renditionRef.current?.prev();
       else renditionRef.current?.next();
@@ -2485,12 +2236,12 @@ export default function ReaderLayout({
       className={`${immersive
         ? 'fixed inset-0 z-[60] flex flex-col w-full overflow-hidden'
         : 'relative flex flex-col h-screen w-full overflow-hidden'} ${theme === 'dark'
-        ? 'bg-[radial-gradient(circle_at_12%_10%,rgba(251,191,36,0.12),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(251,146,60,0.10),transparent_28%),#1c120d]'
-        : 'bg-[radial-gradient(circle_at_12%_10%,rgba(251,191,36,0.28),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(251,146,60,0.22),transparent_28%),linear-gradient(135deg,#fff7ed_0%,#fffbeb_55%,#fff1e6_100%)]'} ${themeClasses[theme]}`}
+        ? 'bg-[#171717]'
+        : 'bg-background'} ${themeClasses[theme]}`}
     >
       {document.fileType === 'EPUB' || document.fileType === 'PDF' ? (
         <>
-          <ReaderToolbar
+          <ReaderToolbar onUtility={tab=>{setUtilityTab(tab);setUtilityOpen(true);}}
             title={document.title}
             positionLabel={document.fileType === 'PDF' ? '第 ' + currentPdfPage + ' 页 / ' + (pdfTotal ?? '…') + ' 页' : '已读 ' + Math.round(epubPercentage) + '%'}
             onPrevious={() => turnPage(-1)} onNext={() => turnPage(1)}
@@ -2502,15 +2253,15 @@ export default function ReaderLayout({
           >
             {document.fileType === 'PDF' && <>
               <label className="flex items-center gap-2 text-sm">排版
-                <select aria-label="阅读排版" value={pdfViewMode} onChange={event => switchPdfLayout(event.target.value as 'text' | 'original')} className="rounded-lg border border-orange-200 bg-transparent px-3 py-2">
+                <select aria-label="阅读排版" value={pdfViewMode} onChange={event => switchPdfLayout(event.target.value as 'text' | 'original')} className="rounded-lg border border-border bg-transparent px-3 py-2">
                   <option value="text">随屏排版</option><option value="original">书页排版</option>
                 </select>
               </label>
               <form className="flex items-center gap-2" onSubmit={event => {event.preventDefault();handlePdfPageJump();}}>
-                <input aria-label="跳转页码" type="number" min="1" max={pdfTotal ?? undefined} value={pdfPageJumpValue} onChange={event => setPdfPageJumpValue(event.target.value)} placeholder="页码" className="w-20 rounded-lg border border-orange-200 bg-transparent px-2 py-2 text-sm"/>
-                <button type="submit" className="rounded-lg border border-orange-200 px-3 py-2 text-sm">跳转</button>
+                <input aria-label="跳转页码" type="number" min="1" max={pdfTotal ?? undefined} value={pdfPageJumpValue} onChange={event => setPdfPageJumpValue(event.target.value)} placeholder="页码" className="w-20 rounded-lg border border-border bg-transparent px-2 py-2 text-sm"/>
+                <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm">跳转</button>
               </form>
-              {pdfViewMode === 'original' && <button type="button" className="rounded-lg border border-orange-200 px-3 py-2 text-sm" onClick={() => switchPdfLayout('text', true)}>学习本页</button>}
+              {pdfViewMode === 'original' && <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm" onClick={() => switchPdfLayout('text', true)}>学习本页</button>}
               <a href={'/api/documents/' + document.id + '/raw#page=' + currentPdfPage} target="_blank" rel="noreferrer" className="px-2 text-sm underline">打开原文件</a>
             </>}
           </ReaderToolbar>
@@ -2523,11 +2274,11 @@ export default function ReaderLayout({
                 className="absolute inset-0 z-[25] bg-transparent"
                 onClick={() => setDrawerOpen(false)}
               />
-              <div className="absolute inset-y-4 left-4 z-30 w-[320px] overflow-hidden rounded-[28px] border border-orange-200 bg-white/90 text-orange-950 shadow-[0_24px_80px_rgba(251,146,60,0.28)] backdrop-blur-xl dark:border-orange-300/20 dark:bg-[#1a1008]/95 dark:text-orange-50">
-              <div className="flex items-center justify-between border-b border-orange-200/70 px-4 py-4 dark:border-orange-300/15">
+              <div className="absolute inset-y-4 left-4 z-30 w-[320px] overflow-hidden rounded-[28px] border border-border bg-card text-foreground shadow-xl backdrop-blur-xl   ">
+              <div className="flex items-center justify-between border-b border-border px-4 py-4 ">
                 <div>
-                  <p className="text-sm font-bold text-orange-950 dark:text-orange-200">🐾 Bookmarks</p>
-                  <p className="text-xs text-orange-900/55 dark:text-orange-100/55">
+                  <p className="text-sm font-bold text-foreground "> Bookmarks</p>
+                  <p className="text-xs text-foreground ">
                     {document.fileType === 'EPUB'
                       ? 'Built-in contents and your saved positions'
                       : 'Saved positions in this PDF'}
@@ -2537,7 +2288,7 @@ export default function ReaderLayout({
                   type="button"
                   disabled={!readingReady || (document.fileType === 'PDF' && pdfViewMode === 'original' && pdfReadyPage !== pdfOriginalPage)}
                   onClick={handleAddBookmark}
-                  className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-800 transition-colors hover:bg-orange-100 dark:border-orange-300/15 dark:bg-orange-300/5 dark:text-orange-200 dark:hover:bg-orange-300/10"
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted    "
                 >
                   <BookmarkPlus className="h-3.5 w-3.5" />
                   Add
@@ -2547,7 +2298,7 @@ export default function ReaderLayout({
               <div className="h-full overflow-y-auto px-4 pb-5">
                 {document.fileType === 'EPUB' ? (
                   <div className="pt-4">
-                    <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-orange-900/55 dark:text-orange-100/55">
+                    <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-foreground ">
                       <BookOpenText className="h-3.5 w-3.5" />
                       Book Contents
                     </div>
@@ -2562,7 +2313,7 @@ export default function ReaderLayout({
                           />
                         ))
                       ) : (
-                        <p className="rounded-2xl border border-dashed border-orange-200 px-3 py-4 text-sm text-orange-900/55 dark:border-orange-300/15 dark:text-orange-100/55">
+                        <p className="rounded-2xl border border-dashed border-border px-3 py-4 text-sm text-foreground  ">
                           This file did not expose a clickable table of contents.
                         </p>
                       )}
@@ -2571,7 +2322,7 @@ export default function ReaderLayout({
                 ) : null}
 
                 <div className="pb-24 pt-6">
-                  <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-orange-900/55 dark:text-orange-100/55">
+                  <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-foreground ">
                     <BookmarkPlus className="h-3.5 w-3.5" />
                     Your Bookmarks
                   </div>
@@ -2582,17 +2333,17 @@ export default function ReaderLayout({
                           key={bookmark.id}
                           type="button"
                           onClick={() => handleBookmarkSelect(bookmark)}
-                          className="block w-full rounded-2xl border border-orange-200 bg-orange-50/60 px-3 py-3 text-left transition-colors hover:bg-orange-100/70 dark:border-orange-300/15 dark:bg-orange-300/5 dark:hover:bg-orange-300/10"
+                          className="block w-full rounded-2xl border border-border bg-card px-3 py-3 text-left transition-colors hover:bg-muted   "
                         >
                           <p className="text-sm font-medium">{bookmark.label}</p>
-                          <p className="mt-1 text-xs text-orange-900/50 dark:text-orange-100/50">
+                          <p className="mt-1 text-xs text-foreground ">
                             {new Date(bookmark.createdAt).toLocaleString()}
                           </p>
                         </button>
                       ))
                     ) : document.fileType === 'PDF' ? (
-                      <div className="rounded-2xl border border-dashed border-orange-200 px-3 py-4 dark:border-orange-300/15">
-                        <p className="text-sm text-orange-900/55 dark:text-orange-100/55">
+                      <div className="rounded-2xl border border-dashed border-border px-3 py-4 ">
+                        <p className="text-sm text-foreground ">
                           No local bookmarks yet.
                         </p>
                         <div className="mt-4 flex gap-2">
@@ -2613,20 +2364,20 @@ export default function ReaderLayout({
                                 ? `Page 1-${pdfTextState.pageCount}`
                                 : 'Page number'
                             }
-                            className="min-w-0 flex-1 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-950 outline-none transition-colors placeholder:text-orange-900/40 focus:border-orange-400/70 dark:border-orange-300/10 dark:bg-orange-300/5 dark:text-orange-50 dark:placeholder:text-orange-100/35"
+                            className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-foreground focus:border-primary    dark:placeholder:text-muted-foreground"
                           />
                           <button
                             type="button"
                             onClick={handlePdfPageJump}
-                            className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-900 transition-colors hover:bg-orange-100 dark:border-orange-300/10 dark:bg-orange-300/5 dark:text-orange-50 dark:hover:bg-orange-300/10"
+                            className="rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted    "
                           >
                             Go
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <p className="rounded-2xl border border-dashed border-orange-200 px-3 py-4 text-sm text-orange-900/55 dark:border-orange-300/15 dark:text-orange-100/55">
-                        No personal bookmarks yet.
+                      <p className="rounded-2xl border border-dashed border-border px-3 py-4 text-sm text-foreground  ">
+                        还没有书签。
                       </p>
                     )}
                   </div>
@@ -2639,11 +2390,28 @@ export default function ReaderLayout({
       ) : null}
 
       {syncError&&<div role="alert" className="absolute bottom-20 left-4 z-20 max-w-sm rounded-xl bg-red-50 p-3 text-sm text-red-800">阅读同步失败：{syncError}。稍后将自动重试。</div>}
-      <ReadingTools documentId={document.id} selection={toolSelection} open={toolsOpen} onOpen={()=>setToolsOpen(true)} onClose={()=>setToolsOpen(false)} entries={entries} onSave={saveReadingEntry}
+
+      <style>{'::highlight(reader-hover-word){background-color:#c7dfff;color:#12243b;}'}</style>
+      <ReaderUtilities open={utilityOpen} onClose={()=>setUtilityOpen(false)}><ReadingTools initialTab={utilityTab} documentId={document.id} selection={toolSelection} open={utilityOpen} embedded onOpen={()=>{setShowDetailed(false);setToolsOpen(true);}} onClose={()=>setUtilityOpen(false)} entries={entries} onSave={saveReadingEntry}
         onDelete={async id=>{await readingRequest('/api/documents/'+document.id+'/reading?entryId='+encodeURIComponent(id),{method:'DELETE'});setEntries(items=>items.filter(item=>item.id!==id));}}
         onJump={jumpReading} onDetailed={()=>{if(toolSelection)setSelectedParagraph({key:toolSelection.location,text:toolSelection.text,preferredPanelSide:'right',anchorY:100,paragraphBounds:{left:24,top:80,right:320,bottom:160}});setToolsOpen(false);setShowDetailed(true);}} onRestoreSelection={setToolSelection}
-        onQuote={quote=>{const content=epubContentsRef.current.find(c=>c.document.body.textContent?.includes(quote));if(content){const node=Array.from(content.document.querySelectorAll('p,li')).find(e=>e.textContent?.includes(quote));node?.scrollIntoView({block:'center'});if(node) {(node as HTMLElement).style.backgroundColor='rgba(251,146,60,.3)';}}else{const paragraph=pdfTextState.paragraphs.find(p=>p.text.includes(quote));if(paragraph)jumpToPdfBookmark(getPdfSelectionKey(document.id,paragraph.id));}}}/>
-      <div className="relative min-h-0 flex-1">
+        onQuote={quote=>{const content=epubContentsRef.current.find(c=>c.document.body.textContent?.includes(quote));if(content){const node=Array.from(content.document.querySelectorAll('p,li')).find(e=>e.textContent?.includes(quote));node?.scrollIntoView({block:'center'});if(node) {(node as HTMLElement).style.backgroundColor='rgba(0,122,255,.15)';}}else{const paragraph=pdfTextState.paragraphs.find(p=>p.text.includes(quote));if(paragraph)jumpToPdfBookmark(getPdfSelectionKey(document.id,paragraph.id));}}}/></ReaderUtilities>
+      <StudyDock kind={showDetailed?'paragraph':'word'} anchorHandle={toolSelection?.anchorHandle} onReturnToSource={()=>toolSelection&&jumpReading(toolSelection.location)} anchor={toolSelection?.anchor} open={toolsOpen || Boolean(selectedParagraph && showDetailed)} side={(showDetailed?selectedParagraph?.preferredPanelSide:toolSelection?.side)||'right'} title={showDetailed?'段落结构与语法':'语境查词 · 阅读工具'} onClose={()=>{setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}} panel={selectedParagraph && showDetailed ? (
+<ExplanationPanel
+                documentId={document.id}
+                text={selectedParagraph.text.slice(0,20000)}
+                selectionKey={selectedParagraph.key}
+                previousText={toolSelection?.previousText}
+                nextText={toolSelection?.nextText}
+                onClose={closeExplanationPanel}
+                onActiveSentenceChange={handleActiveSentenceChange}
+                onFocusTargetChange={handleFocusTargetChange}
+                onExplanationReady={handleExplanationReady}
+              />
+      ) : (
+<WordLookupContent documentId={document.id} selection={toolSelection} entries={entries} onSave={saveReadingEntry}/>
+      )}>
+      <div className="relative h-full min-h-0">
         {document.fileType === 'EPUB' ? (
           <ReactReader
             url={`/api/documents/${document.id}/raw`}
@@ -2743,11 +2511,14 @@ export default function ReaderLayout({
                               : null;
 
                             return (
+                              <div key={paragraph.id} className="group relative">
+                              <button type="button" aria-label="分析本段结构与语法" title="分析本段结构与语法" className="float-right ml-2 rounded border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:bg-muted" onClick={event=>openPdfParagraph(paragraph,event.currentTarget.parentElement!)}>段落分析</button>
                               <button
-                                key={paragraph.id}
                                 type="button"
                                 data-pdf-selection-key={selectionKey}
                                 style={{fontSize, lineHeight}}
+                                onMouseMove={event=>highlightWord(event.currentTarget.ownerDocument,wordAtPoint(event.currentTarget.ownerDocument,event.clientX,event.clientY,event.currentTarget)?.range)}
+                                onMouseLeave={event=>highlightWord(event.currentTarget.ownerDocument)}
                                 onClick={(event) =>
                                   handlePdfParagraphClick(paragraph, event)
                                 }
@@ -2771,6 +2542,7 @@ export default function ReaderLayout({
                                   )}
                                 </span>
                               </button>
+                              </div>
                             );
                           })}
                         </article>
@@ -2785,65 +2557,7 @@ export default function ReaderLayout({
         )}
       </div>
 
-      {selectedParagraph && showDetailed ? (
-        <div className="absolute inset-0 z-30">
-          <button
-            type="button"
-            aria-label="Close explanation"
-            className="absolute inset-0 bg-transparent"
-            onClick={closeExplanationPanel}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: resolvedPanelRect.top,
-              left: resolvedPanelRect.left,
-              width: resolvedPanelFrame.width,
-              height: resolvedPanelFrame.height,
-            }}
-          >
-            <div
-              className="relative flex h-full w-full overflow-hidden rounded-[28px] border border-orange-200/90 bg-white/88 shadow-[0_24px_80px_rgba(251,146,60,0.34)] backdrop-blur-xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div
-                className="absolute left-1/2 top-3 z-30 h-2 w-24 -translate-x-1/2 cursor-grab rounded-full bg-orange-200 hover:bg-orange-300"
-                data-panel-drag-handle="true"
-                onPointerDown={handlePanelDragStart}
-                title="Drag explanation panel"
-              />
-              <ExplanationPanel
-                documentId={document.id}
-                text={selectedParagraph.text.slice(0,20000)}
-                selectionKey={selectedParagraph.key}
-                previousText={toolSelection?.previousText}
-                nextText={toolSelection?.nextText}
-                onClose={closeExplanationPanel}
-                onActiveSentenceChange={handleActiveSentenceChange}
-                onFocusTargetChange={handleFocusTargetChange}
-                onExplanationReady={handleExplanationReady}
-              />
-              <button
-                type="button"
-                aria-label="Resize explanation panel"
-                className={cn(
-                  'absolute bottom-3 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-orange-200 bg-white/80 text-orange-700 shadow-sm backdrop-blur-md',
-                  resolvedPanelSide === 'right'
-                    ? 'left-3 cursor-sw-resize'
-                    : 'right-3 cursor-se-resize'
-                )}
-                onPointerDown={handleResizeStart}
-              >
-                <span className="text-[10px] leading-none">↘</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : document.fileType === 'EPUB' ? (
-        <div className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 transform rounded-full bg-orange-500/90 px-4 py-2 text-sm font-semibold text-white shadow-xl shadow-orange-200 backdrop-blur-md fade-in animate-in">
-          🐱 Hover a paragraph, then click to decode it with AI
-        </div>
-      ) : null}
+      </StudyDock>
     </div>
   );
 }
@@ -2862,7 +2576,7 @@ function TocTree({
       <button
         type="button"
         onClick={() => onSelect(item.href)}
-        className="block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-orange-100/70 dark:hover:bg-orange-300/10"
+        className="block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-muted "
         style={{ paddingLeft: `${12 + depth * 16}px` }}
       >
         {item.label}
