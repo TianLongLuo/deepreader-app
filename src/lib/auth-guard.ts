@@ -19,7 +19,14 @@ export function parseCredentials(value: unknown, signup = false) {
 
 export function assertSameOrigin(req: Request) {
   const origin = req.headers.get('origin');
-  if ((origin && origin !== new URL(req.url).origin) || req.headers.get('sec-fetch-site') === 'cross-site') throw new AuthRequestError('Invalid request origin', 403);
+  if (!origin) return;
+  // Behind a reverse proxy, standard Request.url reflects the internal
+  // server address (e.g. localhost:3000), not the public origin. Build the
+  // expected origin from the forwarded headers instead.
+  const fwdHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const fwdProto = req.headers.get('x-forwarded-proto') || 'http';
+  const expectedOrigin = `${fwdProto}://${fwdHost}`;
+  if (origin !== expectedOrigin || req.headers.get('sec-fetch-site') === 'cross-site') throw new AuthRequestError('Invalid request origin', 403);
 }
 
 export async function checkAuthRequest(req: Request, action: 'login' | 'signup', identifier: string) {
