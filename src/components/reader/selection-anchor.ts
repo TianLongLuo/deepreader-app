@@ -1,6 +1,8 @@
 import {viewportAnchor,type StudyAnchor} from './floating-study-layout';
 export type AnchorHandle={measure:()=>StudyAnchor|null;focus:()=>void;dispose:()=>void};
-export function createAnchorHandle(initial:HTMLElement,range?:Range,findReplacement?:()=>HTMLElement|null):AnchorHandle{
+export function createAnchorHandle(initial:HTMLElement,range?:Range,findReplacement?:()=>HTMLElement|null,bounds:'selection'|'paragraph'='selection'):AnchorHandle{
+ // Word lookup may highlight a range, but must leave its whole paragraph clickable.
+ if(bounds==='paragraph')range=undefined;
  let disposed=false;
  let start=0,end=0;
  if(range){const prefix=initial.ownerDocument.createRange();prefix.selectNodeContents(initial);prefix.setEnd(range.startContainer,range.startOffset);start=prefix.toString().length;end=start+range.toString().length;}

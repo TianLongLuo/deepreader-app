@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {useUIPreferences} from '@/hooks/use-ui-preferences';
+import {useEffect,useRef,useState} from 'react';
 import {Search,Settings,ArrowLeft,NotebookPen} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ChevronUp, ChevronDown, BookmarkPlus, ChevronLeft, ChevronRight, List, Maximize2, Minimize2 } from 'lucide-react';
@@ -39,10 +39,49 @@ export default function ReaderToolbar({
   bookmarkDisabled = false,
   children,
 }: ReaderToolbarProps) {
-  const {toolbarCollapsed,setToolbarCollapsed}=useUIPreferences();
-  if(toolbarCollapsed)return <header className="relative z-30 h-0 w-full shrink-0" aria-label="已收起的阅读工具栏"><button type="button" aria-label="展开阅读工具栏" title="展开阅读工具栏" aria-expanded={false} className="absolute right-3 top-2 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary" onClick={()=>setToolbarCollapsed(false)}><ChevronDown size={17}/></button></header>;
+  const [open,setOpen]=useState(false);
+  const root=useRef<HTMLElement>(null);
+  const restore=useRef<HTMLButtonElement>(null);
+  const surface=useRef<HTMLDivElement>(null);
+  const focusOnOpen=useRef(false);
+  const closeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const cancelClose=()=>{if(closeTimer.current!==null){clearTimeout(closeTimer.current);closeTimer.current=null;}};
+  const reveal=()=>{cancelClose();setOpen(true);};
+  const hide=()=>{
+    cancelClose();
+    if(root.current?.contains(document.activeElement))restore.current?.focus({preventScroll:true});
+    focusOnOpen.current=false;
+    setOpen(false);
+  };
+  const scheduleClose=()=>{
+    cancelClose();
+    closeTimer.current=setTimeout(()=>{
+      const active=document.activeElement;
+      // Keyboard navigation stays usable; a mouse-clicked button must not pin the bar.
+      if(active&&root.current?.contains(active)&&active.matches(':focus-visible'))return;
+      setOpen(false);
+    },160);
+  };
+  useEffect(()=>{
+    if(open&&focusOnOpen.current){
+      focusOnOpen.current=false;
+      surface.current?.querySelector<HTMLElement>('a[href],button:not(:disabled),select')?.focus({preventScroll:true});
+    }
+  },[open]);
+  useEffect(()=>()=>{if(closeTimer.current!==null)clearTimeout(closeTimer.current);},[]);
   return (
-    <header className="relative z-20 w-full shrink-0 border-b border-border bg-card text-foreground   ">
+    <header ref={root} data-reader-toolbar={open?'visible':'hidden'} className="relative z-30 h-0 w-full shrink-0"
+      onPointerEnter={event=>{if(event.pointerType!=='touch')reveal();}}
+      onPointerLeave={event=>{if(event.pointerType!=='touch')scheduleClose();}}
+      onFocusCapture={event=>{if(event.target.matches(':focus-visible')){if(event.target===restore.current)focusOnOpen.current=true;reveal();}}}
+      onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget))scheduleClose();}}
+      onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();hide();}}}>
+      <div data-toolbar-hover-zone aria-hidden="true" className="absolute inset-x-0 top-0 h-3" />
+      <button ref={restore} tabIndex={open?-1:0} type="button" aria-label="展开阅读工具栏" title="展开阅读工具栏" aria-expanded={open}
+        className={`absolute right-3 top-2 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary ${open?'pointer-events-none opacity-0':''}`}
+        onClick={event=>{if(event.detail===0)focusOnOpen.current=true;reveal();}}><ChevronDown size={17}/></button>
+      <div ref={surface} data-toolbar-surface inert={!open} aria-hidden={!open}
+        className={`absolute inset-x-0 top-0 border-b border-border bg-card text-foreground shadow-sm transition-[transform,opacity] motion-reduce:transition-none ${open?'translate-y-0 opacity-100 duration-0':'pointer-events-none -translate-y-full opacity-0 duration-150'}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2 py-3 pl-14 pr-3 sm:pr-5">
         <Link href="/documents" aria-label="返回书库" title="返回书库" className="rounded-md p-2 hover:bg-muted"><ArrowLeft size={17}/></Link>
         <h1 className="min-w-0 basis-full truncate text-sm font-semibold sm:basis-auto sm:flex-1" title={title}>
@@ -77,7 +116,7 @@ export default function ReaderToolbar({
             {immersive ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
             <span className="hidden sm:inline">{immersive ? '退出全屏' : '全屏'}</span>
           </button>
-          <button type="button" className={controlClass} aria-label="收起阅读工具栏" title="收起阅读工具栏" aria-expanded={true} onClick={()=>setToolbarCollapsed(true)}><ChevronUp size={17}/></button>
+          <button type="button" className={controlClass} aria-label="收起阅读工具栏" title="收起阅读工具栏" aria-expanded={true} onClick={hide}><ChevronUp size={17}/></button>
         </div>
       </div>
       {children && (
@@ -85,6 +124,7 @@ export default function ReaderToolbar({
           {children}
         </div>
       )}
+      </div>
     </header>
   );
 }

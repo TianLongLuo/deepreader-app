@@ -1,10 +1,13 @@
 import {expect,it,vi} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-const state=vi.hoisted(()=>({toolbarCollapsed:false,setToolbarCollapsed:vi.fn()}));
-vi.mock('@/hooks/use-ui-preferences',()=>({useUIPreferences:()=>state}));
+vi.mock('@/hooks/use-ui-preferences',()=>({useUIPreferences:()=>({toolbarCollapsed:false,setToolbarCollapsed:vi.fn()})}));
 import ReaderToolbar from '@/components/reader/reader-toolbar';
 const noop=()=>{};
 const render=()=>renderToStaticMarkup(createElement(ReaderToolbar,{title:'Fixture',onPrevious:noop,onNext:noop,onBookmark:noop,onContents:noop,onFullscreen:noop,immersive:false}));
-it('offers a collapse control on the expanded toolbar',()=>{state.toolbarCollapsed=false;const html=render();expect(html).toContain('收起阅读工具栏');expect(html).toContain('aria-expanded="true"');expect(html).toContain('Fixture');});
-it('leaves an accessible compact restore button when collapsed',()=>{state.toolbarCollapsed=true;const html=render();expect(html).toContain('展开阅读工具栏');expect(html).toContain('aria-expanded="false"');expect(html).not.toContain('返回书库');expect(html).toContain('h-0');});
+it('starts hidden even for existing expanded preferences and reserves no reading space',()=>{
+ const html=render();expect(html).toContain('data-reader-toolbar="hidden"');expect(html).toContain('h-0');expect(html).toContain('inert=""');
+});
+it('provides a top-edge hover target and accessible touch/keyboard restore control',()=>{
+ const html=render();expect(html).toContain('data-toolbar-hover-zone');expect(html).toContain('展开阅读工具栏');expect(html).toContain('aria-expanded="false"');
+});

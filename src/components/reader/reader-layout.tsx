@@ -1411,7 +1411,7 @@ export default function ReaderLayout({
       if (selected && /\s/.test(selected)) {openPdfParagraph(paragraph,event.currentTarget);return;}
       if (selected || word) {
         const index=pdfTextState.paragraphs.indexOf(paragraph);
-        openWord(selected || word!.word,getPdfSelectionKey(document.id,paragraph.id),paragraph.text,event.clientX,pdfTextState.paragraphs[index-1]?.text,pdfTextState.paragraphs[index+1]?.text,viewportAnchor(word?.rect ?? event.currentTarget.getBoundingClientRect()),createAnchorHandle(event.currentTarget,word?.range));
+        openWord(selected || word!.word,getPdfSelectionKey(document.id,paragraph.id),paragraph.text,event.clientX,pdfTextState.paragraphs[index-1]?.text,pdfTextState.paragraphs[index+1]?.text,viewportAnchor(event.currentTarget.getBoundingClientRect()),createAnchorHandle(event.currentTarget,word?.range,undefined,'paragraph'));
         return;
       }
       openPdfParagraph(paragraph, event.currentTarget);
@@ -1537,7 +1537,7 @@ export default function ReaderLayout({
         const hit=wordAtPoint(contents.document,event.clientX,event.clientY,element);
         if(hit){
           const frame=(contents.window.frameElement as Element|null)?.getBoundingClientRect();
-          openWord(hit.word,contents.cfiFromRange(hit.range),element.textContent||'',event.clientX+(frame?.left||0),element.previousElementSibling?.textContent||'',element.nextElementSibling?.textContent||'',viewportAnchor(hit.rect,frame),createAnchorHandle(element,hit.range,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===element.textContent)??null));
+          openWord(hit.word,contents.cfiFromRange(hit.range),element.textContent||'',event.clientX+(frame?.left||0),element.previousElementSibling?.textContent||'',element.nextElementSibling?.textContent||'',viewportAnchor(element.getBoundingClientRect(),frame),createAnchorHandle(element,hit.range,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===element.textContent)??null,'paragraph'));
           return;
         }
         handleParagraphClick(element, contents);
@@ -1936,7 +1936,7 @@ export default function ReaderLayout({
           const block=parent?.closest('p,li,blockquote') as HTMLElement|null;
           if(/\s/.test(text)&&block){handleParagraphClick(block,contents);return;}
           const rect=range.getBoundingClientRect();const frame=(contents.window.frameElement as Element|null)?.getBoundingClientRect();
-          openWord(text,contents.cfiFromRange(range),block?.textContent||parent?.textContent||'',rect.left+(frame?.left||0),block?.previousElementSibling?.textContent||'',block?.nextElementSibling?.textContent||'',viewportAnchor(rect,frame),block?createAnchorHandle(block,range,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===block.textContent)??null):undefined);
+          openWord(text,contents.cfiFromRange(range),block?.textContent||parent?.textContent||'',rect.left+(frame?.left||0),block?.previousElementSibling?.textContent||'',block?.nextElementSibling?.textContent||'',viewportAnchor(block?.getBoundingClientRect()??rect,frame),block?createAnchorHandle(block,range,()=>epubContentsRef.current.flatMap(c=>Array.from(c.document.querySelectorAll<HTMLElement>('p,li,blockquote'))).find(p=>p.isConnected&&p.textContent===block.textContent)??null,'paragraph'):undefined);
         });
         contents.document.querySelectorAll<HTMLElement>('p,li,blockquote').forEach(node=>{if(entriesRef.current.some(e=>e.kind==='note'&&node.textContent?.includes(e.text)))node.style.boxShadow='inset 0 -2px #007aff';});
         installInteractiveParagraphs(contents);
