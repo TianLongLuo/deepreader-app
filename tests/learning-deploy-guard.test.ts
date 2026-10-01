@@ -13,3 +13,9 @@ it('arms rollback before stopping either own service',()=>{
  const firstWorkerStop=source.indexOf('if systemctl is-active --quiet deepreader-worker.service; then');
  expect(source.lastIndexOf('STOPPED=1',firstWorkerStop)).toBeGreaterThan(source.indexOf('trap \'rc=$?;'));
 });
+it('verifies any loaded worker identity before stopping it, including units outside /etc',()=>{
+ const source=readFileSync('scripts/deploy/deepreader-release.sh','utf8');
+ const guard=source.indexOf('systemctl show deepreader-worker.service -p LoadState --value');
+ expect(guard).toBeGreaterThan(0);expect(guard).toBeLessThan(source.indexOf('STOPPED=1'));
+ expect(source).toContain('systemctl show deepreader-worker.service -p FragmentPath --value');expect(source).toContain('! -L /etc/systemd/system/deepreader-worker.service');
+});

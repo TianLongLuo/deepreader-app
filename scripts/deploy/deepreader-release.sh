@@ -13,6 +13,15 @@ NEW="$1"; OLD="$2"; STOPPED=0; UPDATED=0; DEPS=0; UNIT=0
 [[ "$(systemctl show deepreader.service -p WorkingDirectory --value)" = "$APP" ]]
 python3 -c 'import sys,venv,sqlite3; assert sys.version_info >= (3,9)'
 node --env-file=.env.production -e 'if(!["file:./dev.db","file:/opt/deepreader-app/prisma/dev.db"].includes(process.env.DATABASE_URL))throw Error("Verify app database path before releasing")'
+# A same-named loaded unit outside this app is not ours to stop or replace.
+worker_load="$(systemctl show deepreader-worker.service -p LoadState --value)"
+if [[ "$worker_load" = loaded ]]; then
+ [[ "$(systemctl show deepreader-worker.service -p WorkingDirectory --value)" = "$APP" ]]
+ [[ "$(systemctl show deepreader-worker.service -p FragmentPath --value)" = /etc/systemd/system/deepreader-worker.service ]]
+ [[ -f /etc/systemd/system/deepreader-worker.service && ! -L /etc/systemd/system/deepreader-worker.service ]]
+else
+ [[ "$worker_load" = not-found ]]
+fi
 git fetch origin main
 [[ "$(git rev-parse origin/main)" = "$NEW" ]]
 git merge-base --is-ancestor "$OLD" "$NEW"

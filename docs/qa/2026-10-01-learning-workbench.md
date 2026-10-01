@@ -21,7 +21,7 @@
 
 ## 最终发布门
 
-- [x] 新分支全量测试：91文件515测试；TypeScript／生产构建／diff check通过（上线前关键修复后还会重跑）
+- [x] 新分支全量测试：91文件516测试；TypeScript／生产构建／diff check通过（上线前关键修复后还会重跑）
 - [x] 一个 fresh-context 全分支 reviewer（base1de7ae7..57232ad），3项Important均RED→GREEN并全量重跑；无Critical。词形使用独立语义核验与原文surface，旧UI回调按任务／响应隔离，混合旧出处选择可翻面语境。Minor：今日完成仍是当前复习会话计数。
 - [ ] 实际已配置模型英西短样本：义项、自然分组、题目引用与表达反馈；首个文本先于 complete
 - [ ] GitHub main非force同步，远端tree验证
@@ -31,3 +31,9 @@
 - [ ] 真实收藏后台完成、FSRS日志／due、实践／提示／争议、旧书及阅读记录可用
 
 线上提交、备份目录、真实时序与结果在取得证据后补入；本记录不宣称已部署。
+
+## 发布前服务器检查
+
+授权的腾讯云 OrcaTerm终端只读检查：原main dad878e、DeepReader服务active／WorkingDirectory=/opt/deepreader-app、SQLite quick_check=ok、Node22.22.2／Python3.12.3、数据库路径保持file:./dev.db、磁盘可用20GB。线上原服务保持运行，未执行真实迁移、服务停机或发布。
+
+当前Mac锁屏导致终端画面读取暂停，已请求解锁；不把尚未读到的运行环境／模型检查结果标为通过。部署脚本另加同名worker的完整身份检查，遇到非本app unit时先停止发布，不触碰该服务。
