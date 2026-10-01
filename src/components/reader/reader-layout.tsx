@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils';
 import ExplanationPanel from './explanation-panel';
 import PdfOriginalView from './pdf-original-view';
 import ReaderToolbar from './reader-toolbar';
+import MeaningGroupControl from './meaning-group-control';
+import {useMeaningGroupReading} from '@/hooks/use-meaning-group-reading';
 import { formatPdfPageLocation, parsePdfPageLocation, pdfPageProgress } from './pdf-location';
 import { createProgressSync } from './progress-sync';
 import WordLookupContent from './word-lookup-content';
@@ -1100,6 +1102,7 @@ export default function ReaderLayout({
 }) {
   const {
     theme,
+    sourceLanguage,meaningGroupReading,setMeaningGroupReading,
     setSourceLanguage,
     fontSize, lineHeight,
     explanationPanelWidth,
@@ -1205,6 +1208,7 @@ export default function ReaderLayout({
     useState<ActiveFocusTarget | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const meaningGroups=useMeaningGroupReading({root:containerRef,documentId:document.id,userId:currentUser.id,language:sourceLanguage,enabled:meaningGroupReading&&(document.fileType==='EPUB'||pdfViewMode==='text'),theme});
   const renditionRef = useRef<RenditionLike | null>(null);
   const hooksRegisteredRef = useRef(false);
   const activeSelectionRef = useRef<ActiveParagraphSelection | null>(null);
@@ -2251,6 +2255,7 @@ export default function ReaderLayout({
             nextDisabled={document.fileType === 'PDF' && pdfTotal !== null && currentPdfPage >= pdfTotal}
             bookmarkDisabled={!readingReady || (document.fileType === 'PDF' && (pdfViewMode === 'original' ? pdfReadyPage !== pdfOriginalPage : !pdfTextState.paragraphs.length))}
           >
+            {(document.fileType==='EPUB'||pdfViewMode==='text')&&<MeaningGroupControl enabled={meaningGroupReading} onChange={setMeaningGroupReading} status={meaningGroups} unsupported={meaningGroups.unsupported} skipped={meaningGroups.skipped} onRetry={meaningGroups.retry}/>}
             {document.fileType === 'PDF' && <>
               <label className="flex items-center gap-2 text-sm">排版
                 <select aria-label="阅读排版" value={pdfViewMode} onChange={event => switchPdfLayout(event.target.value as 'text' | 'original')} className="rounded-lg border border-border bg-transparent px-3 py-2">

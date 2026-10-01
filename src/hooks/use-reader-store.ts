@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { persist,createJSONStorage } from 'zustand/middleware';
 
 type ReaderState = {
+  meaningGroupReading:boolean;
+  setMeaningGroupReading:(value:boolean)=>void;
   studyPinned:boolean;
   setStudyPinned:(value:boolean)=>void;
   studyLanguages: Partial<Record<'en'|'es', StudyLanguage>>;
@@ -38,6 +40,8 @@ type ReaderState = {
 export const useReaderStore = create<ReaderState>()(
   persist(
     (set, get) => ({
+      meaningGroupReading:false,
+      setMeaningGroupReading:meaningGroupReading=>set({meaningGroupReading}),
       studyPinned:false,
       setStudyPinned:studyPinned=>set({studyPinned}),
       studyLanguages: {},
