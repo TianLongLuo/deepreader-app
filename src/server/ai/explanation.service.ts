@@ -1,3 +1,4 @@
+import {AIStreamError} from '@/lib/ai-stream';
 import { buildSpanishSystemPrompt, SPANISH_GRAMMAR_GUIDANCE } from './prompt-service';
 import { prisma } from '@/lib/prisma';
 import { encrypt } from '@/lib/crypto';
@@ -890,11 +891,7 @@ export class AIExplanationService {
       }
     }
 
-    if (!config.provider.stream) {
-      const explanation = await this.explain(workspaceId, request, actorEmail);
-      yield { type: 'final', explanation };
-      return;
-    }
+    if (!config.provider.stream) throw new AIStreamError('STREAM_UNSUPPORTED','');
 
     const bilingualMode = request.bilingualMode ?? false;
     const normalizedParagraph = normalizePromptText(paragraph.rawText);
@@ -938,39 +935,14 @@ export class AIExplanationService {
         sourceLanguage: request.sourceLanguage,
         responseContent,
         signal: request.signal,
+        allowRepair:false,
       });
 
       yield { type: 'final', explanation };
     } catch (error) {
       request.signal?.throwIfAborted();
-      log.warn(
-        { paragraphId, error: (error as Error).message },
-        'Streaming explanation interrupted, retrying with non-stream AI completion'
-      );
-
-      const retryResponse = await config.provider.complete({
-        systemPrompt,
-        userPrompt,
-        signal: request.signal,
-        maxTokens: explanationMaxTokens,
-        temperature: EXPLANATION_TEMPERATURE,
-      });
-
-      const explanation = await this.finalizeGeneratedExplanation({
-        paragraph,
-        config,
-        requestSettingsHash,
-        normalizedParagraph,
-        systemPrompt,
-        userPrompt,
-        explanationMaxTokens,
-        bilingualMode,
-        sourceLanguage: request.sourceLanguage,
-        responseContent: retryResponse.content,
-        signal: request.signal,
-      });
-
-      yield { type: 'final', explanation };
+      log.warn({paragraphId,code:error instanceof AIStreamError?error.code:'FAILED'},'Streaming explanation did not complete');
+      throw error;
     }
   }
 
@@ -986,6 +958,7 @@ export class AIExplanationService {
     responseContent,
     sourceLanguage = 'en',
     signal,
+    allowRepair=true,
   }: {
     paragraph: { id: string; rawText: string; textHash: string };
     config: ResolvedAIConfig;
@@ -998,6 +971,7 @@ export class AIExplanationService {
     responseContent: string;
     sourceLanguage?: 'en' | 'es';
     signal?: AbortSignal;
+    allowRepair?: boolean;
   }): Promise<ExplanationResponse> {
     signal?.throwIfAborted();
     const paragraphId = paragraph.id;
@@ -1006,6 +980,7 @@ export class AIExplanationService {
     let finalResponseContent = responseContent;
 
     if (!validation.valid) {
+      if(!allowRepair)throw new AIStreamError('INVALID_OUTPUT','');
       log.warn(
         { paragraphId, error: validation.error },
         'Initial response invalid, attempting repair'
@@ -1047,6 +1022,7 @@ No markdown. No extra text.
       );
 
       if (completenessIssue) {
+        if(!allowRepair)throw new AIStreamError('INVALID_OUTPUT','');
         log.warn(
           { paragraphId, issue: completenessIssue },
           'AI structure response incomplete, attempting AI completion repair'

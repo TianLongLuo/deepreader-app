@@ -247,3 +247,11 @@ it('requests a compact word explanation without repeating dictionary material',a
  expect(request.systemPrompt).toContain('at most two short sentences');
  expect(request.systemPrompt).not.toContain('Include the original sentence');
 });
+it('uses the stream provider only when streaming is explicitly requested',async()=>{
+ const {POST}=await import('@/app/api/reading-assistant/route');
+ const c=config();c.provider.stream=async function*(){yield {content:'{"answer":"Streamed","citations":[]}'};};
+ mocks.requireAuth.mockResolvedValue({id:'route-stream-user',workspaceId:'route-stream-workspace',email:'u@test'});mocks.findFirst.mockResolvedValue({id:'doc'});mocks.resolve.mockResolvedValue(c);
+ const r=await POST(new Request('http://localhost/api/reading-assistant',{method:'POST',headers:{Accept:'application/x-ndjson'},body:JSON.stringify(input)}));
+ const {consumeAIStream}=await import('@/lib/ai-stream');
+ expect(await consumeAIStream(r,new AbortController().signal,()=>{})).toMatchObject({answer:'Streamed'});expect(c.provider.complete).not.toHaveBeenCalled();
+});

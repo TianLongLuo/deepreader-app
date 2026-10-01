@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import type {Prisma} from "@prisma/client";
+import {vocabularyService} from "@/server/vocabulary/service";
 
 export const progressSchema = z
   .object({
@@ -85,6 +87,7 @@ export const readingService = {
     const data = entrySchema.parse(input);
     if (data.kind === "word") data.text = data.text.normalize("NFC");
     await requireDocument(documentId, workspaceId);
+    const save=async(db:Prisma.TransactionClient)=>{
     if (data.kind === "bookmark" || data.kind === "word") {
       // Preserve legacy English keys while keeping Spanish homographs independent.
       let sourceLanguage = "en";
@@ -102,12 +105,12 @@ export const readingService = {
       if (data.kind === "word") {
         // The first multilingual release saved Spanish under the untagged key.
         // Keep its id and review history without allowing English to overwrite it.
-        const legacy = await prisma.readingEntry.findUnique({where:{dedupKey:legacyKey},select:{note:true}});
+        const legacy = await db.readingEntry.findUnique({where:{dedupKey:legacyKey},select:{note:true}});
         let legacyLanguage = "en";
         try { if (legacy && JSON.parse(legacy.note)?.sourceLanguage === "es") legacyLanguage = "es"; } catch {}
         if (legacy && legacyLanguage === "es") dedupKey = sourceLanguage === "es" ? legacyKey : keyFor("en");
       }
-      return prisma.readingEntry.upsert({
+      return db.readingEntry.upsert({
         where: { dedupKey },
         // A later dictionary/AI lookup can enrich a word saved while offline.
         update: data.kind === "word" && data.note.trim() ? { note: data.note } : {},
@@ -120,9 +123,12 @@ export const readingService = {
         },
       });
     }
-    return prisma.readingEntry.create({
+    return db.readingEntry.create({
       data: { userId, documentId, ...data },
     });
+    };
+    if(data.kind!=="word")return save(prisma);
+    return prisma.$transaction(async tx=>{const item=await save(tx);await vocabularyService.capture({userId,workspaceId},item,tx);return item;});
   },
   async remove(
     userId: string,
@@ -140,9 +146,9 @@ export const readingService = {
     });
     if (!result.count) throw new ReadingError("Entry not found", 404);
   },
-  async study(userId: string, workspaceId: string) {
+  async study(userId: string, workspaceId: string, recordsOnly=false) {
     return prisma.readingEntry.findMany({
-      where: entryScope(userId, workspaceId),
+      where: {...entryScope(userId, workspaceId),...(recordsOnly?{kind:{not:"word"}}:{})},
       include: { document: { select: { id: true, title: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -153,22 +159,6 @@ export const readingService = {
       where: { id: entryId, kind: "word", ...entryScope(userId, workspaceId) },
     });
     if (!item) throw new ReadingError("Word not found", 404);
-    const days =
-      rating === "again" ? 0 : Math.min(30, 2 ** Math.min(item.reviewCount, 5));
-    const reviewAt = new Date(
-      Date.now() + (days ? days * 86400000 : 10 * 60000),
-    );
-    await prisma.readingEntry.updateMany({
-      where: { id: item.id, ...entryScope(userId, workspaceId) },
-      data: {
-        reviewAt,
-        reviewCount: rating === "again" ? 0 : { increment: 1 },
-      },
-    });
-    return {
-      ...item,
-      reviewAt,
-      reviewCount: rating === "again" ? 0 : item.reviewCount + 1,
-    };
+    throw new ReadingError("请使用新的复习会话，翻面后再评分", 409);
   },
 };

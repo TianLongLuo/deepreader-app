@@ -1,0 +1,68 @@
+{
+  "version": "wordfreq-3.1.1",
+  "packageVersion": "3.1.1",
+  "source": "https://github.com/rspeer/wordfreq",
+  "snapshot": "about 2021",
+  "dataHashes": {
+    "wordfreq/data/large_en.msgpack.gz": "dffae8066b78dce0a6667cf5f58e567054f902674667090a7ac8a8a44628b05c",
+    "wordfreq/data/large_es.msgpack.gz": "14f326b4f68d517f9b8b99c1e26ef56a508d2dc8d0ee7a9e6e8732ddab1aa65e"
+  },
+  "verifiedDownloads": {
+    "ftfy-6.3.1-py3-none-any.whl": {
+      "sha256": "7c70eb532015cd2f9adb53f101fb6c7945988d023a085d127d1573dc49dd0083",
+      "source": "https://files.pythonhosted.org/packages/ab/6e/81d47999aebc1b155f81eca4477a616a70f238a2549848c38983f3c22a82/ftfy-6.3.1-py3-none-any.whl",
+      "package": "ftfy",
+      "version": "6.3.1",
+      "license": "Apache-2.0",
+      "requiresPython": ">=3.9"
+    },
+    "langcodes-3.5.1-py3-none-any.whl": {
+      "sha256": "b6a9c25c603804e2d169165091d0cdb23934610524a21d226e4f463e8e958a72",
+      "source": "https://files.pythonhosted.org/packages/dd/c1/d10b371bcba7abce05e2b33910e39c33cfa496a53f13640b7b8e10bb4d2b/langcodes-3.5.1-py3-none-any.whl",
+      "package": "langcodes",
+      "version": "3.5.1",
+      "license": null,
+      "requiresPython": ">=3.9"
+    },
+    "locate-1.1.1-py3-none-any.whl": {
+      "sha256": "9e5e2f3516639240f4d975c08e95ae6a24ff4dd63d228f927541cdec30105755",
+      "source": "https://files.pythonhosted.org/packages/ab/0d/9b6f11382b2f9080b5a366d20e90b4c08e547b6cd08c2a206729e6bad47a/locate-1.1.1-py3-none-any.whl",
+      "package": "locate",
+      "version": "1.1.1",
+      "license": null,
+      "requiresPython": ">=3.4"
+    },
+    "msgpack-1.1.2-cp39-cp39-macosx_11_0_arm64.whl": {
+      "sha256": "9fba231af7a933400238cb357ecccf8ab5d51535ea95d94fc35b7806218ff844",
+      "source": "https://files.pythonhosted.org/packages/6c/3a/7d4077e8ae720b29d2b299a9591969f0d105146960681ea6f4121e6d0f8d/msgpack-1.1.2-cp39-cp39-macosx_11_0_arm64.whl",
+      "package": "msgpack",
+      "version": "1.1.2",
+      "license": null,
+      "requiresPython": ">=3.9"
+    },
+    "regex-2026.1.15-cp39-cp39-macosx_11_0_arm64.whl": {
+      "sha256": "0057de9eaef45783ff69fa94ae9f0fd906d629d0bd4c3217048f46d1daa32e9b",
+      "source": "https://files.pythonhosted.org/packages/4b/d2/a2fef3717deaff647d7de2bccf899a576c7eaf042b6b271fc4474515fe97/regex-2026.1.15-cp39-cp39-macosx_11_0_arm64.whl",
+      "package": "regex",
+      "version": "2026.1.15",
+      "license": null,
+      "requiresPython": ">=3.9"
+    },
+    "wcwidth-0.9.1-py3-none-any.whl": {
+      "sha256": "e0c3a1c45c5b9550c6919a4449e95f5b177f6e165786376981db8f1addae9b21",
+      "source": "https://files.pythonhosted.org/packages/96/a2/f06f2e0be4895e5943d358755b51968ace85774cf0a4cc42b4dafb793832/wcwidth-0.9.1-py3-none-any.whl",
+      "package": "wcwidth",
+      "version": "0.9.1",
+      "license": null,
+      "requiresPython": ">=3.9"
+    },
+    "wordfreq-3.1.1-py3-none-any.whl": {
+      "sha256": "4b1c6ecffc6198be3396d5cf871c4423ca71c907c231348d352dd54d62b97473",
+      "source": "https://files.pythonhosted.org/packages/24/61/62835c475d69872d30689f284497853fe33fe1d6dd18f57346d13305861d/wordfreq-3.1.1-py3-none-any.whl",
+      "package": "wordfreq",
+      "version": "3.1.1",
+      "license": "Apache-2.0",
+      "requiresPython": ">=3.8,<4"
+    }
+  }
+}

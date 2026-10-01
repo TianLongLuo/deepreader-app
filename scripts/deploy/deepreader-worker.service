@@ -1,0 +1,22 @@
+[Unit]
+Description=DeepReader vocabulary enrichment worker
+After=network-online.target deepreader.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/deepreader-app
+EnvironmentFile=/opt/deepreader-app/.env.production
+Environment=NODE_ENV=production
+Environment=PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/root/.local/bin/node --import tsx /opt/deepreader-app/scripts/learning-worker.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+MemoryMax=256M
+CPUQuota=20%
+Nice=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

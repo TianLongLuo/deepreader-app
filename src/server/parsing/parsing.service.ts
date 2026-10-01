@@ -5,6 +5,7 @@ import { getStorageProvider } from '../storage';
 import { pdfParser } from './pdf.parser';
 import { epubParser } from './epub.parser';
 import { ParsedDocument, ParsedSection } from '@/types/documents';
+import {recordParsedExposuresIn} from '@/server/vocabulary/exposures';
 import { hashText } from '@/lib/crypto';
 
 const log = createChildLogger('parsing-service');
@@ -47,6 +48,8 @@ export class ParsingService {
       // insert must leave the previous text and its explanations intact.
       await prisma.$transaction(async (tx) => {
         await this.saveParsedDocument(tx, documentId, parsedDoc);
+        const code=(parsedDoc.language||doc.language||'').toLowerCase().split(/[-_]/)[0],language=code==='en'||code==='es'?code:null;
+        if(language){try{await recordParsedExposuresIn(tx,{userId:doc.userId,workspaceId:doc.workspaceId},documentId,language,parsedDoc.sections);}catch{throw new Error('Material exposure indexing failed');}}
         await tx.document.update({
           where: { id: documentId },
           data: {

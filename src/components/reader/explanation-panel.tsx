@@ -1,4 +1,5 @@
 'use client';
+import {consumeExplanationStream} from '@/lib/explanation-stream';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -1326,42 +1327,6 @@ function PronunciationButton({
   );
 }
 
-async function readNdjsonEvents(
-  response: Response,
-  onEvent: (event: any) => void
-) {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return;
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
-      onEvent(JSON.parse(line));
-    }
-  }
-
-  buffer += decoder.decode();
-  if (buffer.trim()) {
-    onEvent(JSON.parse(buffer));
-  }
-}
-
 function isAbortLikeError(error: unknown) {
   const message = (error as Error)?.message || String(error || '');
   const name = (error as Error)?.name || '';
@@ -1543,7 +1508,7 @@ export default function ExplanationPanel({
         let lastPartialSignature = '';
         let completed = false;
 
-        await readNdjsonEvents(res, (event) => {
+        await consumeExplanationStream<ExplanationData>(res, controller.signal, (event) => {
           if (requestId !== requestIdRef.current) {
             return;
           }
@@ -1740,7 +1705,7 @@ export default function ExplanationPanel({
     const failureMessage =
       error?.message ||
       data?.error ||
-      'AI did not return a usable structured explanation this time. Try again and it will regenerate with a stricter JSON repair pass.';
+      'AI did not return a usable structured explanation this time. Retry to generate a new, source-checked explanation.';
 
     return (
       <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
@@ -1785,9 +1750,9 @@ export default function ExplanationPanel({
   const structureBreakdown = buildStructureBreakdown(result, sourceLanguage);
   const generationLabel =
     data.status === 'STREAMING'
-      ? bilingualMode
-        ? '生成中'
-        : 'STREAMING'
+      ? generating
+        ? bilingualMode ? '生成中' : 'STREAMING'
+        : bilingualMode ? '尚未校验' : 'UNVALIDATED'
       : data.cached
         ? 'CACHED'
         : 'GENERATED';

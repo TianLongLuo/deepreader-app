@@ -40,3 +40,11 @@ it('limits sequential new requests to 24 per minute without charging cache hits'
  await expect(generateMeaningGroups(scope,{...input,documentId:'25'},c)).rejects.toBeInstanceOf(MeaningGroupLimitError);
  expect(c.provider.complete).toHaveBeenCalledTimes(24);
 });
+it('reports the remaining rate-limit window rather than a fixed full minute',async()=>{
+ vi.useFakeTimers();try{
+  const c=config(),scope={workspaceId:'remaining-window',userId:'remaining-window'};
+  for(let i=0;i<24;i++)await generateMeaningGroups(scope,{...input,documentId:String(i)},c);
+  vi.setSystemTime(Date.now()+7500);
+  await expect(generateMeaningGroups(scope,{...input,documentId:'25'},c)).rejects.toMatchObject({retryAfterSeconds:53});
+ }finally{vi.useRealTimers();}
+});

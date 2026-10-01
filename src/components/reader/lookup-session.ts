@@ -7,3 +7,4 @@ export async function startLookup({dictionary,context,signal}:{dictionary:()=>Pr
  await Promise.all([settle('dictionary',dictionary),settle('context',context)]);
 }
 export function additionalMeanings<T extends {definitions:unknown[]}>(meanings:T[]):T[]{return meanings.map((m,i)=>({...m,definitions:i<2?m.definitions.slice(1):m.definitions})).filter(m=>m.definitions.length>0);}
+export function savedLookupPayload(source:{word:string;context:string;sourceLanguage:'en'|'es'},_state:{draft:string;answer:{answer:string}|null;busy:boolean},dictionary?:object){return {...dictionary,...source,aiExplanation:!_state.busy?_state.answer?.answer:undefined,dictionaryAvailable:Boolean(dictionary)};}

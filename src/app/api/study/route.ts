@@ -6,12 +6,12 @@ import {
   readingFailure,
   entryId,
 } from "@/server/reading/http";
-export async function GET() {
+export async function GET(req?:Request) {
   try {
     const u = await readingUser();
     return NextResponse.json({
-      items: await readingService.study(u.id, u.workspaceId),
-    });
+      items: await readingService.study(u.id, u.workspaceId,req?new URL(req.url).searchParams.get("recordsOnly")==="true":false),
+    },{headers:{"Cache-Control":"private, no-store"}});
   } catch (e) {
     return readingFailure(e);
   }

@@ -117,3 +117,5 @@ export interface AIProviderInterface {
   complete(request: AICompletionRequest): Promise<AICompletionResponse>;
   stream?(request: AICompletionRequest): AsyncIterable<AICompletionStreamChunk>;
 }
+
+export type {AIStreamEvent} from '@/lib/ai-stream';

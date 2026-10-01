@@ -1,6 +1,8 @@
+import {assertStreamResult} from '@/lib/ai-stream';
 import { SPANISH_GRAMMAR_GUIDANCE } from '@/server/ai/prompt-service';
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { AICompletionRequest } from "@/types/ai";
 import type { ResolvedAIConfig } from "@/server/ai/config-resolver";
 import { sharedRequest } from "./cancellation";
 
@@ -59,7 +61,8 @@ const resultSchema = z.object({
     .max(8)
     .optional(),
 });
-export type ReadingAnswer = z.infer<typeof resultSchema>;
+export type ReadingAnswer = z.infer<typeof resultSchema> & {provider?:string;model?:string};
+export const READING_SCOPE_NOTICE="仅基于本次提供的章节片段（不代表全书）。";
 const cache = new Map<string, { expires: number; value: ReadingAnswer }>();
 const instructions = {
   quick:
@@ -99,7 +102,7 @@ export function parseGroundedAnswer(
   if (input.mode === "quiz" && !result.questions?.length)
     throw new Error("AI 未返回有效自测题，请重试");
   if (input.mode === "summary" || input.mode === "quiz") {
-    result.answer = `仅基于本次提供的章节片段（不代表全书）。\n\n${result.answer}`;
+    result.answer = scopeAnswerText(result.answer);
   }
   return result;
 }
@@ -111,7 +114,22 @@ export async function generateReadingAnswer(
   signal?: AbortSignal,
 ) {
   signal?.throwIfAborted();
-  const key = createHash("sha256")
+  const key=readingAnswerKey(scope,input,config);
+  const now = Date.now();
+  for (const [k, value] of cache) if (value.expires <= now) cache.delete(k);
+  const cached = config.cacheEnabled && cache.get(key);
+  if (cached) return cached.value;
+  return sharedRequest(`reading:${key}`, signal, async (upstreamSignal) => {
+    const response = await config.provider.complete(readingCompletionRequest(input,config,upstreamSignal));
+    upstreamSignal.throwIfAborted();
+    const answer = parseGroundedAnswer(response.content, input);
+    storeReadingAnswer(key,answer,config);
+    return answer;
+  });
+}
+
+export function readingAnswerKey(scope:{workspaceId:string;userId:string},input:ReadingRequest,config:ResolvedAIConfig){
+  return createHash("sha256")
     .update(
       JSON.stringify([
         scope,
@@ -120,17 +138,15 @@ export async function generateReadingAnswer(
         config.settingsHash,
         config.promptVersion,
         input,
-        "reading-v3-compact-word",
+        "reading-v4-stream-compact-word",
       ]),
     )
     .digest("hex");
-  const now = Date.now();
-  for (const [k, value] of cache) if (value.expires <= now) cache.delete(k);
-  const cached = config.cacheEnabled && cache.get(key);
-  if (cached) return cached.value;
-  return sharedRequest(`reading:${key}`, signal, async (upstreamSignal) => {
-    const response = await config.provider.complete({
-      signal: upstreamSignal,
+
+}
+export function readingCompletionRequest(input:ReadingRequest,config:ResolvedAIConfig,signal?:AbortSignal):AICompletionRequest{
+ return {
+      signal,
       maxTokens: Math.min(
         config.maxTokens,
         input.mode === "word" ? 600 : input.mode === "quick" ? 700 : 4000,
@@ -146,13 +162,21 @@ export async function generateReadingAnswer(
         question: input.question,
         conversationData: input.history,
       }),
-    });
-    upstreamSignal.throwIfAborted();
-    const answer = parseGroundedAnswer(response.content, input);
-    if (config.cacheEnabled) {
-      if (cache.size >= 128) cache.delete(cache.keys().next().value!);
-      cache.set(key, { expires: Date.now() + 10 * 60_000, value: answer });
-    }
-    return answer;
-  });
+    };
+}
+export function cachedReadingAnswer(key:string,config:ResolvedAIConfig){
+ const now=Date.now();for(const [k,v] of cache)if(v.expires<=now)cache.delete(k);
+ return config.cacheEnabled?cache.get(key)?.value:undefined;
+}
+export function storeReadingAnswer(key:string,value:ReadingAnswer,config:ResolvedAIConfig){
+ assertStreamResult(value);
+ if(!config.cacheEnabled)return;if(cache.size>=128)cache.delete(cache.keys().next().value!);
+ cache.set(key,{expires:Date.now()+10*60000,value});
+}
+
+export function scopeAnswerText(answer:string){
+ let body=answer;
+ while(body.startsWith(READING_SCOPE_NOTICE))body=body.slice(READING_SCOPE_NOTICE.length).trimStart();
+ if(READING_SCOPE_NOTICE.startsWith(body))body='';
+ return `${READING_SCOPE_NOTICE}\n\n${body}`;
 }

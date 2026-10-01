@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { speakInBrowser } from "./language-tools";
+import {requestReadingAnswer} from '@/lib/reading-stream-session';
+import type {ReadingRequest} from '@/server/reading-assistant/service';
 import { useReaderStore } from "@/hooks/use-reader-store";
 
 import type {ReadingEntry,ReadingSelection,Answer,Dictionary} from '@/types/reading-tools';
@@ -82,6 +84,8 @@ export default function ReadingTools({
     { role: "user" | "assistant"; content: string }[]
   >([]);
   const [answer, setAnswer] = useState<Answer | null>(null);
+  const [draft,setDraft]=useState("");
+  const [wordDraft,setWordDraft]=useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -93,7 +97,7 @@ export default function ReadingTools({
     controller.current?.abort();
     lastAction.current = null;
     setBusy(false);
-    setAnswer(null);
+    setAnswer(null);setDraft("");setWordDraft("");
     setHistory([]);
     setDictionary(null);
     setWordAnswer(null);
@@ -110,9 +114,10 @@ export default function ReadingTools({
           : "",
       );
     }
-  }, [selection]);
+  }, [selection,sourceLanguage,explanationLanguage,bilingualMode,readingLevel]);
   useEffect(()=>{if(tab==="dictionary"&&word.trim())lookupWord(word);},[sourceLanguage,explanationLanguage,bilingualMode]);
   useEffect(() => () => controller.current?.abort(), []);
+  useEffect(()=>{if(!open){controller.current?.abort();setBusy(false);}},[open]);
   async function perform(action: (signal: AbortSignal) => Promise<void>) {
     controller.current?.abort();
     const c = new AbortController();
@@ -131,12 +136,12 @@ export default function ReadingTools({
   }
   function lookupWord(term: string) {
     if(!term.trim())return;
-    setDictionary(null);setWordAnswer(null);
+    setDictionary(null);setWordAnswer(null);setWordDraft("");
     void perform(async signal=>{
       const context=selection?.contextText || selection?.text || term;
       const [lexical,contextual] = await Promise.allSettled([
-        readingRequest(`/api/dictionary?word=${encodeURIComponent(term.trim().normalize('NFC'))}&language=${sourceLanguage}&definitionLanguage=${bilingualMode?'zh':'en'}`,{signal}),
-        readingRequest('/api/reading-assistant',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({documentId,mode:'word',targetWord:term.trim(),text:context.slice(0,24000),previousText:selection?.previousText?.slice(0,6000),nextText:selection?.nextText?.slice(0,6000),question:`Explain the word: ${term}`,level:readingLevel,language:explanationLanguage,definitionMode:bilingualMode?'bilingual':'monolingual',sourceLanguage})})
+        readingRequest(`/api/dictionary?word=${encodeURIComponent(term.trim().normalize('NFC'))}&language=${sourceLanguage}&definitionLanguage=${bilingualMode?'zh':'en'}`,{signal}).then(data=>{if(!signal.aborted)setDictionary(data);return data;}),
+        requestReadingAnswer({documentId,mode:'word',targetWord:term.trim(),text:context.slice(0,24000),previousText:selection?.previousText?.slice(0,6000),nextText:selection?.nextText?.slice(0,6000),level:readingLevel,language:explanationLanguage,definitionMode:bilingualMode?'bilingual':'monolingual',sourceLanguage},signal,text=>{if(!signal.aborted)setWordDraft(text);}).then(data=>{if(!signal.aborted)setWordAnswer({word:term.trim(),answer:data});return data;})
       ]);
       if(signal.aborted)return;
       if(lexical.status==='fulfilled')setDictionary(lexical.value);
@@ -147,15 +152,11 @@ export default function ReadingTools({
   }
   function ask(mode: string) {
     if (!selection?.text) return;
-    const prompt = question;
+    const prompt = question;setAnswer(null);setDraft("");
     void perform(async (signal) => {
-      const data = await readingRequest("/api/reading-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify({
+      const data = await requestReadingAnswer({
           documentId,
-          mode,
+          mode:mode as ReadingRequest["mode"],
           text: (mode === "summary" || mode === "quiz"
             ? selection.chapterText || selection.text
             : selection.text
@@ -167,7 +168,7 @@ export default function ReadingTools({
             ...(history.length
               ? history
               : answer
-                ? [{ role: "assistant", content: answer.answer }]
+                ? [{ role: "assistant" as const, content: answer.answer }]
                 : []),
           ]
             .slice(-12)
@@ -175,8 +176,7 @@ export default function ReadingTools({
           level: readingLevel,
           language: explanationLanguage,
           sourceLanguage,
-        }),
-      });
+      },signal,text=>{if(!signal.aborted)setDraft(text);});
       if (signal.aborted) return;
       setAnswer(data);
       setRevealed([]);
@@ -347,6 +347,7 @@ export default function ReadingTools({
                     : ""}
                   ；答案依据本段及相邻上下文。
                 </p>
+                {!answer&&draft&&<div className="rounded-xl bg-card p-4"><p className="whitespace-pre-wrap text-sm leading-7">{draft}</p><p role="status" className="mt-2 text-xs text-muted-foreground">{busy?"正在生成…":"已显示内容尚未校验"}</p></div>}
                 {answer && (
                   <div className="space-y-3 rounded-xl bg-card p-4">
                     {(answer.provider || answer.model) && <p className="text-xs text-primary">本次模型：{answer.provider || "未知服务"} · {answer.model || "未知模型"}</p>}
@@ -467,7 +468,7 @@ export default function ReadingTools({
                       setBusy(false);
                       setWord(e.target.value);
                       setDictionary(null);
-                      setWordAnswer(null);
+                      setWordAnswer(null);setWordDraft("");
                       setError("");
                       setStatus("");
                       lastAction.current = null;
@@ -477,6 +478,7 @@ export default function ReadingTools({
                   <button className={button} disabled={!word.trim() || busy}>查词</button>
                 </form>
                 <button type="button" className={button} disabled={!word.trim()} onClick={()=>{setError("");void speakInBrowser(word.trim(),sourceLanguage).catch(error=>setError(error.message));}}>朗读单词</button>
+                {!wordAnswer&&wordDraft&&<div className="rounded-xl bg-card p-4"><p className="whitespace-pre-wrap text-sm leading-7">{wordDraft}</p><p role="status" className="mt-2 text-xs text-muted-foreground">{busy?"正在生成…":"已显示内容尚未校验"}</p></div>}
                 {wordAnswer && (
                   <div className="rounded-xl bg-card p-4">
                     <p className="text-xs text-primary">
@@ -543,7 +545,7 @@ export default function ReadingTools({
                 )}
                 <button
                   className={button}
-                  disabled={!word.trim() || busy}
+                  disabled={!word.trim()}
                   onClick={() =>
                     void save(
                       "word",

@@ -133,7 +133,7 @@ it("blocks foreign workspace reads, writes, deletes, and reviews", async () => {
     }),
   ).rejects.toThrow("Word not found");
 });
-it("deduplicates words and schedules successful/failed reviews", async () => {
+it("deduplicates words but rejects legacy ratings that bypass answer reveal", async () => {
   const a = await readingService.create("alice", "owner", "doc", {
     kind: "word",
     text: "apple",
@@ -145,18 +145,8 @@ it("deduplicates words and schedules successful/failed reviews", async () => {
     location: "epubcfi(/1)",
   });
   expect(a.id).toBe(b.id);
-  const good = await readingService.review("alice", "owner", {
-    entryId: a.id,
-    rating: "good",
-  });
-  expect(good.reviewCount).toBe(1);
-  expect(good.reviewAt.getTime()).toBeGreaterThan(Date.now() + 23 * 3600000);
-  const again = await readingService.review("alice", "owner", {
-    entryId: a.id,
-    rating: "again",
-  });
-  expect(again.reviewCount).toBe(0);
-  expect(again.reviewAt.getTime()).toBeLessThan(Date.now() + 11 * 60000);
+  await expect(readingService.review("alice","owner",{entryId:a.id,rating:"good"})).rejects.toMatchObject({status:409});
+  expect((await prisma.readingEntry.findUniqueOrThrow({where:{id:a.id}})).reviewCount).toBe(0);
 });
 it("validates bounded data and blocks injected identity fields", () => {
   expect(
@@ -180,7 +170,7 @@ it("keeps Spanish homographs separate from English and enriches repeated saves w
   const english = await readingService.create("alice","owner","doc",common);
   const spanish = await readingService.create("alice","owner","doc",{...common,note:JSON.stringify({sourceLanguage:"es",meanings:[]})});
   expect(spanish.id).not.toBe(english.id);
-  await readingService.review("alice","owner",{entryId:spanish.id,rating:"good"});
+  await prisma.readingEntry.update({where:{id:spanish.id},data:{reviewCount:1,reviewAt:new Date("2026-10-02T00:00:00Z")}});
   const enriched = await readingService.create("alice","owner","doc",{...common,note:JSON.stringify({sourceLanguage:"es",aiExplanation:"pie significa foot"})});
   expect(enriched.id).toBe(spanish.id);
   expect(enriched.note).toContain("foot");
@@ -267,4 +257,10 @@ it("persists physical PDF page progress and bookmarks alongside legacy paragraph
   expect((await readingService.get('bob', 'owner', 'doc')).items).not.toContainEqual(expect.objectContaining({ id: bookmark.id }));
   await readingService.progress('alice', 'owner', 'doc', { location: 'pdf:doc:pdf-p-4', percentage: 50 });
   expect((await readingService.get('alice', 'owner', 'doc')).progress?.location).toBe('pdf:doc:pdf-p-4');
+});
+it('links a newly saved word to a sense, encounter and empty review card atomically',async()=>{
+ const item=await readingService.create('alice','owner','doc',{kind:'word',text:'atomic',note:JSON.stringify({context:'An atomic update.',contextMeaning:{en:'one indivisible update'}}),location:'atomic-cfi'});
+ const encounter=await prisma.vocabularyEncounter.findUnique({where:{readingEntryId:item.id}});
+ expect(encounter).not.toBeNull();
+ expect(await prisma.reviewCard.count({where:{senseId:encounter!.senseId}})).toBe(1);
 });

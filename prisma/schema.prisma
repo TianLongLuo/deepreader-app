@@ -24,18 +24,28 @@ model User {
   documents        Document[]
   preferences      UserPreference[]
   sessions         Session[]
-  readingProgress ReadingProgress[]
-  readingEntries ReadingEntry[]
+  readingProgress  ReadingProgress[]
+  readingEntries   ReadingEntry[]
+
+  vocabularySenses     VocabularySense[]
+  vocabularyEncounters VocabularyEncounter[]
+  reviewLogs           ReviewLog[]
+  reviewSessions       ReviewSession[]
+  senseChanges         SenseChange[]
+  enrichmentJobs       EnrichmentJob[]
+  wordExposures        WordExposure[]
+  learningTasks        LearningTask[]
+  learningResponses    LearningResponse[]
 
   @@map("users")
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  userId       String
-  token        String   @unique
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -61,6 +71,16 @@ model Workspace {
   preferences     UserPreference[]
   aiJobs          AIJob[]
 
+  vocabularySenses     VocabularySense[]
+  vocabularyEncounters VocabularyEncounter[]
+  reviewLogs           ReviewLog[]
+  reviewSessions       ReviewSession[]
+  senseChanges         SenseChange[]
+  enrichmentJobs       EnrichmentJob[]
+  wordExposures        WordExposure[]
+  learningTasks        LearningTask[]
+  learningResponses    LearningResponse[]
+
   @@map("workspaces")
 }
 
@@ -84,27 +104,29 @@ model WorkspaceMember {
 // ============================================================
 
 model Document {
-  id          String   @id @default(cuid())
-  workspaceId String
-  userId      String
-  title       String
-  fileType    String   // "PDF" or "EPUB"
-  storageKey  String
-  fileSize    Int
-  status      String   @default("PENDING")
-  parseStatus String   @default("PENDING")
-  language    String?
-  pageCount   Int?
+  id           String   @id @default(cuid())
+  workspaceId  String
+  userId       String
+  title        String
+  fileType     String // "PDF" or "EPUB"
+  storageKey   String
+  fileSize     Int
+  status       String   @default("PENDING")
+  parseStatus  String   @default("PENDING")
+  language     String?
+  pageCount    Int?
   metadataJson String? // Stored as string in sqlite instead of Json type natively supported in PG
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sections  DocumentSection[]
-  paragraphs Paragraph[]
-  readingProgress ReadingProgress[]
-  readingEntries ReadingEntry[]
+  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sections             DocumentSection[]
+  paragraphs           Paragraph[]
+  readingProgress      ReadingProgress[]
+  readingEntries       ReadingEntry[]
+  vocabularyEncounters VocabularyEncounter[]
+  wordExposures        WordExposure[]
 
   @@index([workspaceId])
   @@index([userId])
@@ -185,7 +207,7 @@ model ParagraphExplanation {
   model                String
   promptVersion        String
   settingsHash         String
-  outputJson           String   // Storing JSON string for SQLite compatibility
+  outputJson           String // Storing JSON string for SQLite compatibility
   rawPromptEncrypted   String?
   rawResponseEncrypted String?
   status               String   @default("PENDING")
@@ -239,31 +261,31 @@ model VocabularyNote {
 // ============================================================
 
 model AIProviderConfig {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   workspaceId         String
   providerKey         String
-  isEnabled           Boolean  @default(true)
+  isEnabled           Boolean   @default(true)
   baseUrl             String
   encryptedApiKey     String
   maskedApiKeyPreview String
   model               String
-  temperature         Float    @default(0.3)
-  maxTokens           Int      @default(384000)
-  topP                Float    @default(1.0)
-  timeoutMs           Int      @default(300000)
-  retryCount          Int      @default(2)
-  streamingEnabled    Boolean  @default(false)
-  saveRawPrompt       Boolean  @default(false)
-  saveRawResponse     Boolean  @default(false)
-  saveRequestInput    Boolean  @default(false)
-  cacheEnabled        Boolean  @default(true)
-  isDefault           Boolean  @default(false)
-  priority            Int      @default(0)
+  temperature         Float     @default(0.3)
+  maxTokens           Int       @default(384000)
+  topP                Float     @default(1.0)
+  timeoutMs           Int       @default(300000)
+  retryCount          Int       @default(2)
+  streamingEnabled    Boolean   @default(false)
+  saveRawPrompt       Boolean   @default(false)
+  saveRawResponse     Boolean   @default(false)
+  saveRequestInput    Boolean   @default(false)
+  cacheEnabled        Boolean   @default(true)
+  isDefault           Boolean   @default(false)
+  priority            Int       @default(0)
   lastTestedAt        DateTime?
   lastTestStatus      String?
   lastTestMessage     String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -277,16 +299,16 @@ model AIProviderConfig {
 // ============================================================
 
 model PromptTemplate {
-  id          String   @id @default(cuid())
-  workspaceId String
-  templateType String  // "SYSTEM", "PARAGRAPH_EXPLANATION", "REPAIR"
-  version     String
-  name        String
-  content     String
-  isActive    Boolean  @default(false)
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  workspaceId  String
+  templateType String // "SYSTEM", "PARAGRAPH_EXPLANATION", "REPAIR"
+  version      String
+  name         String
+  content      String
+  isActive     Boolean  @default(false)
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -307,7 +329,7 @@ model UserPreference {
   preferredGrammarMode         Boolean  @default(true)
   preferredAnnotationLayers    String   @default("[]") // Stored as JSON string
   readerTheme                  String   @default("dark")
-  savedDraftJson               String?  // JSON string
+  savedDraftJson               String? // JSON string
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
@@ -325,12 +347,12 @@ model UserPreference {
 model AIJob {
   id           String   @id @default(cuid())
   workspaceId  String
-  jobType      String   // "PARSE_DOCUMENT", "GENERATE_EXPLANATION"
+  jobType      String // "PARSE_DOCUMENT", "GENERATE_EXPLANATION"
   targetId     String
   status       String   @default("QUEUED")
   attemptCount Int      @default(0)
   errorMessage String?
-  metadataJson String?  // JSON string
+  metadataJson String? // JSON string
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -343,40 +365,304 @@ model AIJob {
 }
 
 model ReadingProgress {
-  id String @id @default(cuid())
-  userId String
+  id         String   @id @default(cuid())
+  userId     String
   documentId String
-  location String
-  percentage Float @default(0)
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  location   String
+  percentage Float    @default(0)
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
   @@unique([userId, documentId])
   @@map("reading_progress")
 }
+
 model ReadingEntry {
-  id String @id @default(cuid())
-  dedupKey String? @unique
-  userId String
-  documentId String
-  kind String
-  text String
-  note String @default("")
-  location String @default("")
-  createdAt DateTime @default(now())
-  reviewAt DateTime?
-  reviewCount Int @default(0)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(cuid())
+  dedupKey            String?              @unique
+  userId              String
+  documentId          String
+  kind                String
+  text                String
+  note                String               @default("")
+  location            String               @default("")
+  createdAt           DateTime             @default(now())
+  reviewAt            DateTime?
+  reviewCount         Int                  @default(0)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document            Document             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  vocabularyEncounter VocabularyEncounter?
+
   @@index([userId, documentId])
   @@index([userId, kind, reviewAt])
   @@map("reading_entries")
 }
 
 model AuthAttempt {
- key String @id
- attempts Int @default(0)
- expiresAt DateTime
- @@index([expiresAt])
- @@map("auth_attempts")
+  key       String   @id
+  attempts  Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("auth_attempts")
+}
+
+// Additive learning entities; original ReadingEntry remains compatibility evidence.
+model VocabularySense {
+  id                    String                @id @default(cuid())
+  userId                String
+  workspaceId           String
+  sourceLanguage        String
+  lemma                 String
+  confirmedDictionaryId String?
+  senseKey              String
+  status                String                @default("unresolved")
+  meaningEn             String                @default("")
+  meaningZh             String                @default("")
+  manualMeaningEn       String?
+  manualMeaningZh       String?
+  pos                   String                @default("")
+  semanticCategory      String                @default("")
+  domain                String?
+  encounterContext      String                @default("")
+  tagsJson              String                @default("[]")
+  manualTagsJson        String?
+  collocationsJson      String                @default("[]")
+  frequencyZipf         Float?
+  frequencyVersion      String?
+  frequencySource       String?
+  frequencyCheckedAt    DateTime?
+  priority              Int                   @default(0)
+  revision              Int                   @default(0)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace             Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  encounters            VocabularyEncounter[]
+  cards                 ReviewCard[]
+  enrichmentJobs        EnrichmentJob[]
+  learningEvidence      LearningEvidence[]
+
+  @@unique([userId, workspaceId, sourceLanguage, lemma, senseKey])
+  @@index([userId, workspaceId, createdAt])
+  @@map("vocabulary_senses")
+}
+
+model VocabularyEncounter {
+  id                   String          @id @default(cuid())
+  senseId              String
+  userId               String
+  workspaceId          String
+  readingEntryId       String          @unique
+  documentId           String
+  location             String
+  surface              String
+  targetSentence       String
+  context              String
+  rawNote              String
+  legacyContextMeaning String          @default("")
+  dictionaryJson       String          @default("null")
+  phonetic             String          @default("")
+  createdAt            DateTime        @default(now())
+  lastSeenAt           DateTime        @default(now())
+  sense                VocabularySense @relation(fields: [senseId], references: [id], onDelete: Cascade)
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace            Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document             Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  readingEntry         ReadingEntry    @relation(fields: [readingEntryId], references: [id], onDelete: Cascade)
+  sessions             ReviewSession[]
+
+  @@index([userId, workspaceId, documentId])
+  @@map("vocabulary_encounters")
+}
+
+model ReviewCard {
+  id         String          @id @default(cuid())
+  senseId    String
+  ability    String          @default("recognition")
+  archivedAt DateTime?
+  stateJson  String
+  due        DateTime
+  version    Int             @default(0)
+  createdAt  DateTime        @default(now())
+  sense      VocabularySense @relation(fields: [senseId], references: [id], onDelete: Cascade)
+  logs       ReviewLog[]
+  sessions   ReviewSession[]
+
+  @@unique([senseId, ability])
+  @@index([due])
+  @@map("review_cards")
+}
+
+model ReviewLog {
+  id          String     @id @default(cuid())
+  cardId      String
+  userId      String
+  workspaceId String
+  operationId String
+  sessionId   String
+  rating      String
+  reviewedAt  DateTime
+  beforeJson  String
+  afterJson   String
+  logJson     String
+  card        ReviewCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId, operationId])
+  @@index([cardId, reviewedAt])
+  @@map("review_logs")
+}
+
+model ReviewSession {
+  id                 String              @id @default(cuid())
+  userId             String
+  workspaceId        String
+  cardId             String
+  encounterId        String
+  cardVersion        Int
+  senseRevision      Int
+  definitionLanguage String
+  expiresAt          DateTime
+  revealedAt         DateTime?
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  card               ReviewCard          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  encounter          VocabularyEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceId, expiresAt])
+  @@map("review_sessions")
+}
+
+model EnrichmentJob {
+  id               String          @id @default(cuid())
+  userId           String
+  workspaceId      String
+  senseId          String
+  expectedRevision Int
+  targetSenseId    String?
+  status           String          @default("queued")
+  attempts         Int             @default(0)
+  availableAt      DateTime        @default(now())
+  leaseUntil       DateTime?
+  leaseToken       String?
+  errorCode        String?
+  progressJson     String          @default("{}")
+  eventVersion     Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sense            VocabularySense @relation(fields: [senseId], references: [id], onDelete: Cascade)
+
+  @@unique([senseId, expectedRevision])
+  @@index([status, availableAt])
+  @@map("enrichment_jobs")
+}
+
+model WordExposure {
+  id             String    @id @default(cuid())
+  userId         String
+  workspaceId    String
+  documentId     String
+  sourceLanguage String
+  lemma          String
+  location       String
+  sourceHash     String
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document       Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentId, sourceLanguage, location, lemma, sourceHash])
+  @@index([userId, workspaceId, sourceLanguage, lemma])
+  @@map("word_exposures")
+}
+
+model SenseChange {
+  id               String    @id @default(cuid())
+  userId           String
+  workspaceId      String
+  action           String
+  sourceIdsJson    String
+  targetId         String
+  encounterIdsJson String
+  detailJson       String
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceId, createdAt])
+  @@map("sense_changes")
+}
+
+model LearningTask {
+ id String @id @default(cuid())
+ userId String
+ workspaceId String
+ mode String
+ sourceLanguage String
+ definitionLanguage String
+ level String
+ wordCount Int @default(250)
+ targetCount Int @default(6)
+ targetsJson String
+ deferredJson String @default("[]")
+ domain String?
+ passage String @default("")
+ questionsJson String @default("[]")
+ answerKeyJson String @default("[]")
+ applicationPrompt String @default("")
+ validationJson String @default("{}")
+ status String @default("generating")
+ version Int @default(0)
+ usedHint Boolean @default(false)
+ openedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+ responses LearningResponse[]
+ @@index([userId,workspaceId,createdAt])
+ @@map("learning_tasks")
+}
+model LearningResponse {
+ id String @id @default(cuid())
+ taskId String
+ userId String
+ workspaceId String
+ operationId String
+ responseJson String
+ feedbackJson String @default("{}")
+ usedHint Boolean @default(false)
+ status String @default("generating")
+ previousResponseId String?
+ version Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ task LearningTask @relation(fields:[taskId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ workspace Workspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+ evidence LearningEvidence[]
+ @@unique([userId,workspaceId,operationId])
+ @@index([taskId,createdAt])
+ @@map("learning_responses")
+}
+model LearningEvidence {
+ id String @id @default(cuid())
+ responseId String
+ senseId String
+ kind String
+ result Boolean?
+ reason String
+ usedHint Boolean @default(false)
+ disputed Boolean @default(false)
+ createdAt DateTime @default(now())
+ response LearningResponse @relation(fields:[responseId],references:[id],onDelete:Cascade)
+ sense VocabularySense @relation(fields:[senseId],references:[id],onDelete:Cascade)
+ @@unique([responseId,senseId,kind])
+ @@index([senseId,kind,createdAt])
+ @@map("learning_evidence")
 }

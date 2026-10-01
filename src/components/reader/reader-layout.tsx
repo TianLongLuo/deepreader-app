@@ -1102,7 +1102,7 @@ export default function ReaderLayout({
 }) {
   const {
     theme,
-    sourceLanguage,meaningGroupReading,setMeaningGroupReading,
+    sourceLanguage,meaningGroupReading,setMeaningGroupReading,meaningGroupLowSaturation,setMeaningGroupLowSaturation,
     setSourceLanguage,
     fontSize, lineHeight,
     explanationPanelWidth,
@@ -1208,7 +1208,8 @@ export default function ReaderLayout({
     useState<ActiveFocusTarget | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const meaningGroups=useMeaningGroupReading({root:containerRef,documentId:document.id,userId:currentUser.id,language:sourceLanguage,enabled:meaningGroupReading&&(document.fileType==='EPUB'||pdfViewMode==='text'),theme});
+  const meaningLocationFor=useCallback((source:import('./meaning-text-source').MeaningTextSource,range:Range)=>{try{const content=epubContentsRef.current.find(c=>c.document===source.element.ownerDocument);if(content)return content.cfiFromRange(range);const block=source.element.closest<HTMLElement>('[data-pdf-selection-key]');if(!block?.dataset.pdfSelectionKey)return null;const prefix=range.cloneRange();prefix.selectNodeContents(block);prefix.setEnd(range.startContainer,range.startOffset);return block.dataset.pdfSelectionKey+'@'+prefix.toString().length;}catch{return null;}},[]);
+  const meaningGroups=useMeaningGroupReading({root:containerRef,documentId:document.id,userId:currentUser.id,language:sourceLanguage,enabled:meaningGroupReading&&(document.fileType==='EPUB'||pdfViewMode==='text'),theme,lowSaturation:meaningGroupLowSaturation,locationFor:meaningLocationFor});
   const renditionRef = useRef<RenditionLike | null>(null);
   const hooksRegisteredRef = useRef(false);
   const activeSelectionRef = useRef<ActiveParagraphSelection | null>(null);
@@ -2255,7 +2256,7 @@ export default function ReaderLayout({
             nextDisabled={document.fileType === 'PDF' && pdfTotal !== null && currentPdfPage >= pdfTotal}
             bookmarkDisabled={!readingReady || (document.fileType === 'PDF' && (pdfViewMode === 'original' ? pdfReadyPage !== pdfOriginalPage : !pdfTextState.paragraphs.length))}
           >
-            {(document.fileType==='EPUB'||pdfViewMode==='text')&&<MeaningGroupControl enabled={meaningGroupReading} onChange={setMeaningGroupReading} status={meaningGroups} unsupported={meaningGroups.unsupported} skipped={meaningGroups.skipped} onRetry={meaningGroups.retry}/>}
+            {(document.fileType==='EPUB'||pdfViewMode==='text')&&<MeaningGroupControl enabled={meaningGroupReading} onChange={setMeaningGroupReading} status={meaningGroups} unsupported={meaningGroups.unsupported} skipped={meaningGroups.skipped} onRetry={meaningGroups.retry} lowSaturation={meaningGroupLowSaturation} onLowSaturationChange={setMeaningGroupLowSaturation}/>}
             {document.fileType === 'PDF' && <>
               <label className="flex items-center gap-2 text-sm">排版
                 <select aria-label="阅读排版" value={pdfViewMode} onChange={event => switchPdfLayout(event.target.value as 'text' | 'original')} className="rounded-lg border border-border bg-transparent px-3 py-2">

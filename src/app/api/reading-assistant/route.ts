@@ -1,3 +1,5 @@
+import {aiStreamResponse} from '@/server/ai/stream-response';
+import {streamReadingAnswer} from '@/server/reading-assistant/stream-service';
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -46,7 +48,9 @@ export async function POST(req: Request) {
         { error: "Document not found" },
         { status: 404 },
       );
-    const config = await aiConfigResolver.resolve(user.workspaceId, user.email);
+    let config;
+    try{config=await aiConfigResolver.resolve(user.workspaceId,user.email);}catch{return NextResponse.json({error:'请检查 AI 权限和模型设置后重试'},{status:req.headers.get('Accept')?.includes('application/x-ndjson')?503:502});}
+    if(req.headers.get('Accept')?.includes('application/x-ndjson'))return aiStreamResponse(req.signal,signal=>streamReadingAnswer({workspaceId:user.workspaceId!,userId:user.id},parsed.data,config,signal));
     const answer = await generateReadingAnswer(
       { workspaceId: user.workspaceId, userId: user.id },
       parsed.data,

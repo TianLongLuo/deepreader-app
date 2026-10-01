@@ -6,7 +6,7 @@ export const normalizeMeaningText=(text:string)=>text.replace(/\s+/g,' ').trim()
 const wordCharacter=(text:string)=>/[\p{L}\p{M}\p{N}'’\-]/u.test(text);
 const boundary=(text:string,offset:number)=>offset===0||offset===text.length||!wordCharacter(text[offset-1])||!wordCharacter(text[offset]);
 const invalid=()=>{throw new Error('意群结果未通过原文校验');};
-export function alignMeaningGroups(source:string,output:unknown):MeaningGroupResult{
+function alignMeaning(source:string,output:unknown,complete:boolean):MeaningGroupResult{
  const text=normalizeMeaningText(source);
  if(!text||text.length>MEANING_GROUP_MAX_TEXT||!output||typeof output!=='object')return invalid();
  const chunks=(output as {groups?:unknown}).groups;
@@ -27,11 +27,11 @@ export function alignMeaningGroups(source:string,output:unknown):MeaningGroupRes
    verbs.push({start:start+local,end:start+verbEnd,text:exact});verbCursor=verbEnd;
   }
  }
- if(text.slice(cursor).trim())return invalid();
+ if(complete&&text.slice(cursor).trim())return invalid();
  return {text,groups,verbs};
 }
 /** Revalidate server/cache responses before drawing ranges in the browser. */
-export function validateMeaningGroupResult(source:string,value:unknown):MeaningGroupResult{
+function validateMeaning(source:string,value:unknown,complete:boolean):MeaningGroupResult{
  const text=normalizeMeaningText(source),r=value as MeaningGroupResult;
  if(!r||r.text!==text||!Array.isArray(r.groups)||!Array.isArray(r.verbs)||r.verbs.length>2048)return invalid();
  let previous=0;
@@ -39,8 +39,12 @@ export function validateMeaningGroupResult(source:string,value:unknown):MeaningG
   if(!span||!Number.isInteger(span.start)||!Number.isInteger(span.end)||span.start<0||span.start>=span.end||span.end>text.length||span.text!==text.slice(span.start,span.end))return invalid();
  }
  for(const verb of r.verbs){if(verb.start<previous||!r.groups.some(g=>verb.start>=g.start&&verb.end<=g.end))return invalid();previous=verb.end;}
- const aligned=alignMeaningGroups(text,{groups:r.groups.map(g=>({text:g.text,verbs:r.verbs.filter(v=>v.start>=g.start&&v.end<=g.end).map(v=>v.text)}))});
+ const aligned=alignMeaning(text,{groups:r.groups.map(g=>({text:g.text,verbs:r.verbs.filter(v=>v.start>=g.start&&v.end<=g.end).map(v=>v.text)}))},complete);
  const sameSpans=(a:MeaningSpan[],b:MeaningSpan[])=>a.length===b.length&&a.every((span,i)=>span.start===b[i].start&&span.end===b[i].end&&span.text===b[i].text);
  if(!sameSpans(aligned.groups,r.groups)||!sameSpans(aligned.verbs,r.verbs))return invalid();
  return aligned;
 }
+export const alignMeaningGroups=(source:string,output:unknown)=>alignMeaning(source,output,true);
+export const alignMeaningPrefix=(source:string,output:unknown)=>alignMeaning(source,output,false);
+export const validateMeaningGroupResult=(source:string,value:unknown)=>validateMeaning(source,value,true);
+export const validateMeaningGroupPrefix=(source:string,value:unknown)=>validateMeaning(source,value,false);

@@ -36,7 +36,7 @@ location / {
 - **保留原 ENCRYPTION_KEY**，否则原 AI 密钥无法解密；不要用新的示例覆盖旧环境文件。
 - 保留原数据库和 storage 路径。管理员邮箱应与旧管理员身份一致；已有账号不会被初始化逻辑覆盖。
 - 拉取新 main 后执行部署脚本。脚本不再修改原 AI 模型配置。
-- `prisma db push` 不带 `--accept-data-loss`，遇到潜在数据损失立即停止；不要加该标志绕过提示。本次仅增加 `auth_attempts` 限流表。
+- `prisma db push` 不带 `--accept-data-loss`，遇到潜在数据损失立即停止；不要加该标志绕过提示。学习工作台使用 `prisma/learning-migrations/` 的版本化 additive SQL；升级前执行下文的副本演练，不用 `db push` 代替旧站学习数据迁移。
 - 回滚：停服务，检出升级前提交，恢复备份数据库/配置/书籍，再安装、生成 Prisma、构建并启动。不要恢复代码却混用不兼容的数据快照。
 
 ## 手动启动 / 验证
@@ -71,6 +71,85 @@ npm run start
 
 顶部阅读工具栏的「意群阅读」默认关闭；勾选后分析当前可见的英文/西语段落，适用于 EPUB 和 PDF「随屏排版」文本视图，不包含扫描 PDF/OCR 或原 PDF 画布标色。分组由模型生成，可能存在语言学偏差，不视为权威语法标注。
 
-请求会先核对登录、书籍所属工作区与 AI 权限。浏览器最多同时分析 2 段；每个服务进程内，按用户/工作区最多 2 个并发、每分钟 24 次新请求，超限暂停并提示手动重试。超过 4000 字符的单段保留原文。页面离开段落或关闭开关时取消未完成请求；提供商实际计费取决于其取消支持。
+请求会先核对登录、书籍所属工作区与 AI 权限。浏览器最多同时分析 2 段；每个服务进程内，按用户/工作区最多 2 个并发、每分钟 24 次新请求，超限按 Retry-After 与有界退避自动恢复，重试耗尽后提示显式重试。长段按句界拆分为不超过1200 UTF-16字符的单元，保留连续、完整原文；极长句在字符安全边界拆分。页面离开段落或关闭开关时取消未完成请求；提供商实际计费取决于其取消支持。
 
 浏览器缓存最多 128 个成功段落，仅在本次阅读会话内保留；开关偏好保存在本浏览器。服务端启用原有 AI 缓存设置时，最多缓存 256 个成功结果、保留 24 小时，按工作区/用户/文档/语言/模型配置隔离；这是进程内缓存，重启后清空。没有后台整本书预生成任务。浏览器需支持 CSS Custom Highlight，标色不重写书籍文本或 EPUB DOM；不支持、请求失败或原文校验失败时保留原文。
+
+## 学习工作台：升级预检与数据迁移
+
+新版本新增语境义项、出处、FSRS 卡片／日志／会话，不覆盖 `reading_entries` 的原始 note、位置、创建时间或旧复习计数。旧计数不生成虚构的 FSRS 历史；未确认同义的同拼写词暂时分开。公开页面只有词库、复习、AI练习三个主入口，笔记／书签／保存对话在“阅读记录”。
+
+运行环境要求 Node.js **22**（版本化迁移使用内置 node:sqlite）；`npm ci` 使用锁定的 ts-fsrs **5.4.2**，不要单独升级排程包。先在本地运行不接触生产数据库的演练：
+
+```bash
+node_modules/.bin/tsx scripts/qa/vocabulary-migration.ts
+```
+
+成功结果须包括旧记录一致、人工字段保留、评分后的卡／日志不重置、中断恢复和 integrity=ok。实际服务器仍需对真实数据库的**一致性备份副本**重复演练；本地 fixture 不替代真实副本。
+
+### 对旧版本数据库副本执行（显式路径）
+
+先安装锁定依赖、生成 Prisma 客户端，并按服务器实际路径设置绝对路径。以下命令只在你选定的副本上执行，脚本不会读取 DATABASE_URL 去猜生产库：
+
+```bash
+node scripts/migrate-learning-schema.mjs --database /ABSOLUTE/BACKUP/COPY.db
+node_modules/.bin/tsx scripts/migrate-vocabulary.ts --database /ABSOLUTE/BACKUP/COPY.db
+# 再次执行应不产生新增出处，不重置卡片和评分日志
+node scripts/migrate-learning-schema.mjs --database /ABSOLUTE/BACKUP/COPY.db
+node_modules/.bin/tsx scripts/migrate-vocabulary.ts --database /ABSOLUTE/BACKUP/COPY.db
+```
+
+迁移版本和 SQL SHA256 存在 learning_schema_versions；已应用 SQL 的校验和变化、外键或完整性检查失败会终止并回滚该事务。禁止在数据库副本演练前先用新版 db push 创建学习表，否则会绕过版本记录。新安装及完整发布入口以最终发布脚本为准，不把不同部署流程混用。
+
+副本检查通过后，仅停止 DeepReader，备份数据库／`.next`／环境配置和 storage，确认端口已释放，再在原数据库上执行相同迁移。保留 `.env.production`、ENCRYPTION_KEY、账号角色、storage、既有反向代理和系统服务设置。启动后验证登录、笔记／书签／对话、查词和真实评分日志／下次到期时间。
+
+**回滚代码与回滚数据分开：** 新增表兼容旧版代码。上线后若已产生新收藏或评分，回滚代码时保留当前数据库；恢复升级前快照会丢掉这些新记录，须由服务器拥有者明确决定，不自动恢复旧库。
+
+主题默认日间，明确选择夜间／跟随系统仍保留；夜间意群支持低饱和配色。AI 接口使用 private/no-store/no-transform 与 X-Accel-Buffering=no 的流式响应头；真实代理是否仍缓冲必须实测，不擅自修改其他站点 Nginx 配置。
+
+阶段二的本地验收记录见 [词库与复习验收](docs/qa/2026-10-01-vocabulary-review.md)。
+
+### 离线词频（独立于个人优先级）
+
+应用需 Python 3.9+ 与 venv 模块。只在 DeepReader 应用目录建立专用环境，不安装系统 pip/apt 包：
+
+```bash
+bash scripts/frequency/setup.sh
+```
+
+setup 使用完整依赖 hash 锁定文件；下载后运行期仅调用本地官方 wordfreq 3.1.1 数据，不请求网络词典或词频 API。离线安装可先按 requirements.lock 下载到应用专用 wheel 目录，再用该 venv 的 `python -m pip --no-index --find-links ... --require-hashes -r scripts/frequency/requirements.lock`。环境不可从其他机器直接搬运，需本机重建。代码 Apache 2.0，数据 CC BY-SA 4.0 及附加来源署名，完整记录见 scripts/frequency/NOTICE.md、UPSTREAM-METADATA.txt 与 /frequency/NOTICE.txt。
+
+Zipf 产品分档：≥4 较常见，≥3 一般，>0 较少见；无数据为“暂无数据”，不当作生僻词。数据约截至2021年，不是实时或行业频率。材料遇见数仅统计已解析/完成意群分析的稳定原文位置，重复处理不增加；不是阅读次数、收藏次数或全站全部书籍统计。个人优先级另行保存和筛选。
+
+
+## 完整学习工作台与工作进程
+
+三个主入口为词库、复习、AI练习。AI练习支持阅读（100–500词、3–12个目标）与应用（2–3个目标、不生成短文）；默认 B2。系统把场景不相容或同词不同义留到下一组。生成草稿后单独调用模型检查义项和题目依据，最多修订一次；未通过的内容不计为就绪。两道理解题的答案依据只在你提交完整回答后提供。表达反馈只突出一个关键问题，可立即重试、标记反馈有误；这些记录与 FSRS 认义排程分开。
+
+### 腾讯云现有安装的专用发布流程
+
+这份脚本仅适用现有 `/opt/deepreader-app`、Node22 `/root/.local/bin/node`、SQLite `prisma/dev.db`、3000端口与 `deepreader.service`。其他安装不要套用它。先核对当前 main、新提交及数据库路径；发布只允许非 force 的快进。现有 Nginx／app service 配置、`.env.production`、加密密钥和 storage 不改。
+
+```bash
+# 已审阅的新提交及现场核对的旧提交均需完整40位SHA
+sudo -n bash scripts/deploy/deepreader-release.sh NEW_SHA EXPECTED_OLD_SHA
+```
+
+脚本先备份原 `.next`、依赖、环境、storage 和一致性 `SNAPSHOT.db`；用独立 `COPY.db` 演练两次迁移，核对原始收藏逐条一致、卡片／日志／出处／任务不重置、外键及完整性无误。副本通过才在真实库执行版本化增量迁移，禁止 db push/reset。构建限制在本app transient unit（1800MB、1核、heap1024MB），新 worker 限制256MB、20%CPU，不修改其他服务。
+
+worker 的唯一功能是处理已保存词汇的后台整理；关闭浏览器不会取消它。运行期只查询 app 私有离线 Python 词频环境，再流式请求已配置模型。工作进程通过有期限的租约和随机令牌逐个处理；过期租约恢复，人工修订版本不符的旧结果不会覆盖。初次失败后最多3次自动重试，之后只接受显式重试；SIGTERM 释放未完成租约。
+
+```bash
+# 发布脚本安装并启用本app自己的这个单元
+sudo systemctl status deepreader.service deepreader-worker.service --no-pager
+# 仅查看必要的状态；不要复制模型密钥／用户原文进公开日志
+sudo journalctl -u deepreader-worker.service -n 30 --no-pager
+```
+
+### 验收与回滚
+
+本地回归：`npm test`、`npx tsc --noEmit`、`npm run build`。隔离浏览器工作台：`node --import tsx scripts/qa/learning-workbench.mjs`，地址仅回环3020，临时数据库含真实旧记录迁移；其确定性模型只验收界面和传输，不代替真实模型语言质量检查。
+
+发布成功后还需在 HTTPS 上实测真实模型首个文本 chunk 先于 complete、英西语义项／短文／反馈、新词整理、隐藏答案的复习和真实日志／due；同时检查词频署名、原书籍、笔记／书签／对话仍正常。未经这些检查不标记整个升级完成。
+
+失败脚本保存最初退出码，只恢复本app旧代码／依赖／构建／原worker状态，并保留现有增量数据库；不自动用旧快照抹掉新收藏、评分或练习。备份目录位于 `/opt/deepreader-app-backups/时间-learning-SHA/`，原始快照为 `SNAPSHOT.db`、演练副本为 `COPY.db`。人工恢复快照会丢失之后新学习记录，应先保留当前库再由拥有者决定；不要把 COPY.db 当成未升级快照。

@@ -1,9 +1,12 @@
+import {resolveReaderTheme} from '@/lib/reader-theme';
 import { getStudyLanguage, type StudyLanguage } from '@/components/reader/study-interaction';
 import { create } from 'zustand';
 import { persist,createJSONStorage } from 'zustand/middleware';
 
 type ReaderState = {
   meaningGroupReading:boolean;
+  meaningGroupLowSaturation:boolean;
+  setMeaningGroupLowSaturation:(value:boolean)=>void;
   setMeaningGroupReading:(value:boolean)=>void;
   studyPinned:boolean;
   setStudyPinned:(value:boolean)=>void;
@@ -17,6 +20,7 @@ type ReaderState = {
   readingLevel: 'beginner' | 'intermediate' | 'advanced';
   setReadingLevel: (readingLevel: 'beginner' | 'intermediate' | 'advanced') => void;
   theme: 'light' | 'dark' | 'sepia';
+  themeExplicit:boolean;
   setTheme: (theme: 'light' | 'dark' | 'sepia') => void;
   learningDepth: 'quick' | 'structure' | 'grammar';
   setLearningDepth: (learningDepth: 'quick' | 'structure' | 'grammar') => void;
@@ -40,6 +44,8 @@ type ReaderState = {
 export const useReaderStore = create<ReaderState>()(
   persist(
     (set, get) => ({
+      meaningGroupLowSaturation:false,
+      setMeaningGroupLowSaturation:meaningGroupLowSaturation=>set({meaningGroupLowSaturation}),
       meaningGroupReading:false,
       setMeaningGroupReading:meaningGroupReading=>set({meaningGroupReading}),
       studyPinned:false,
@@ -53,8 +59,9 @@ export const useReaderStore = create<ReaderState>()(
       setTypography: (fontSize, lineHeight) => set({fontSize, lineHeight}),
       readingLevel: 'intermediate',
       setReadingLevel: (readingLevel) => set({readingLevel}),
-      theme: 'dark',
-      setTheme: (theme) => set({ theme }),
+      theme: 'light',
+      themeExplicit:false,
+      setTheme: (theme) => set({ theme,themeExplicit:true }),
       learningDepth: 'quick',
       setLearningDepth: (learningDepth) => set({ learningDepth }),
       bilingualMode: false,
@@ -76,6 +83,7 @@ export const useReaderStore = create<ReaderState>()(
     }),
     {
       name: 'reader-preferences',
+      merge:(saved,current)=>{const value=saved&&typeof saved==='object'?saved as Partial<ReaderState>:{};return {...current,...value,meaningGroupLowSaturation:value.meaningGroupLowSaturation===true,theme:resolveReaderTheme(value),themeExplicit:value.themeExplicit===true||(!('themeExplicit' in value)&&['light','dark','sepia'].includes(String(value.theme)))};},
       storage:createJSONStorage(()=>({getItem:key=>{try{return localStorage.getItem(key);}catch{return null;}},setItem:(key,value)=>{try{localStorage.setItem(key,value);}catch{}},removeItem:key=>{try{localStorage.removeItem(key);}catch{}}})),
     }
   )
