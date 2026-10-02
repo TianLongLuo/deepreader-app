@@ -29,3 +29,13 @@ This was an output-alignment failure, not a paragraph-length or day/night-color 
 - Real-model old/fixed comparison completed before deployment. This does not guarantee all future model calls succeed; persistent failures remain explicit and manually retryable.
 
 Deployment is restricted to DeepReader code/build and its web service. No schema, dependencies, SSH/firewall, provider configuration or unrelated services need changing.
+
+## Production deployment and HTTPS acceptance
+
+- Deployed code commit: `bb80a4147b716a84c3623f834aa0bcb4e84e46c5`.
+- Rollback backup: `/opt/deepreader-app-backups/20261002-115008-meaning-bb80a41` (previous code/build and consistent database snapshot).
+- Release marker: `__MEANING_HOTFIX_SUCCESS__`. Database quick/foreign-key checks passed.
+- Original environment, Nginx, both service units, provider settings and book files verified unchanged by SHA256. Existing worker PID unchanged. No migration, dependency installation or unrelated service restart.
+- Using the user's existing browser login, the deployed HTTPS endpoint returned complete exact coverage for both approved excerpts: long paragraph 12 groups, first prefix 1,967 ms/final 2,466 ms; dialogue 3 groups, first prefix 942 ms/final 984 ms. Different valid model groupings can have different counts.
+- Public login endpoint returned HTTP 200; unauthenticated meaning endpoint returned HTTP 401.
+- Reload the reader once to clear old failed-queue state; the old page's failed entries do not spontaneously rerun merely because the server changed.
