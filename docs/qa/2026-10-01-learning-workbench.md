@@ -21,19 +21,33 @@
 
 ## 最终发布门
 
-- [x] 新分支全量测试：91文件516测试；TypeScript／生产构建／diff check通过（上线前关键修复后还会重跑）
+- [x] 新分支全量测试：92文件518测试；TypeScript／生产构建／diff check通过（上线前关键修复后还会重跑）
 - [x] 一个 fresh-context 全分支 reviewer（base1de7ae7..57232ad），3项Important均RED→GREEN并全量重跑；无Critical。词形使用独立语义核验与原文surface，旧UI回调按任务／响应隔离，混合旧出处选择可翻面语境。Minor：今日完成仍是当前复习会话计数。
-- [ ] 实际已配置模型英西短样本：义项、自然分组、题目引用与表达反馈；首个文本先于 complete
-- [ ] GitHub main非force同步，远端tree验证
-- [ ] 真实DB一致性COPY两次迁移、旧数据逐条一致、快照／配置／storage备份
-- [ ] 只更新DeepReader app与其新worker；其他站点／服务配置checksum不变
-- [ ] 本地HTTP／外部HTTPS200、未登录AI401、已登录实际代理不缓冲
-- [ ] 真实收藏后台完成、FSRS日志／due、实践／提示／争议、旧书及阅读记录可用
+- [x] 实际已配置模型英西短样本：义项、自然分组、题目引用与表达反馈；首个文本先于 complete
+- [x] GitHub main非force同步，远端tree验证
+- [x] 真实DB一致性COPY两次迁移、旧数据逐条一致、快照／配置／storage备份
+- [x] 只更新DeepReader app与其新worker；其他站点／服务配置checksum不变
+- [x] 本地HTTP／外部HTTPS200、未登录AI401、已登录实际代理不缓冲
+- [x] 真实收藏后台完成、FSRS日志／due、实践／提示／争议、旧书及阅读记录可用
 
-线上提交、备份目录、真实时序与结果在取得证据后补入；本记录不宣称已部署。
+## 2026-10-02 正式发布与线上验收
 
-## 发布前服务器检查
+- 已部署代码：`79d9ac3ed42370bf18d82c05d88c9fd1d6c93328`；GitHub main 非 force 更新，远端 tree 与本地验证代码一致。
+- 原提交：`dad878e0311adcb5d910c9bb044a9e9efb4a9d67`。
+- 回滚备份：`/opt/deepreader-app-backups/20261002-110236-learning-79d9ac3/`。`SNAPSHOT.db` 是原始一致性快照，`COPY.db` 是两次迁移演练副本；原 reading_entries 逐条一致、重复运行幂等、完整性检查通过。
+- `deepreader.service` 与新增的本应用 `deepreader-worker.service` 均 active，NRestarts=0。只新增本应用 worker；原环境文件、Nginx、原 app unit、AI 配置和书籍所有文件 SHA256 均保持一致。
+- Python 3.12 主机没有 ensurepip；只在应用私有 venv 使用 SHA256 固定 pip 25.2 引导安装，不执行 apt 或修改系统 Python。英西离线词频实测 occasion=4.38、negociar=4.15、未知词=null。
+- 公共模型样本 EN/ES 均经过实际已配置 DeepSeek-v4-flash 的生成、独立语义核验、反馈和词义整理。首次发现 200 词要求被写成 114/115 词，校验正确拦截；新增数值化正文长度提示后通过，未放宽校验或增加重试次数。
+- HTTPS 外部登录页 200；未登录练习接口 401。真实登录态的练习流首文字 **722ms**、完成 **2512ms**、86 个文本事件；反馈首文字 **850ms**、完成 **2226ms**、36 个文本事件。确认经过线上 HTTPS 代理仍是渐进输出。
+- 3 个临时收藏即时保存，真实后台 worker 全部完成；英中语境义项及离线词频保存成功。复习答前无释义，未翻面评分 409，翻面后 Good 生成 1 条 FSRS 日志、卡 version=1／due 更新。
+- 应用训练、提示、反馈和“反馈有误”链路通过；练习不增加认义评分。旧书原始文件和阅读记录接口正常，原始阅读记录逐条未变化。
+- 验收只使用公共样例；临时词条、练习、评分及短期会话已清理，token 没有离开服务器，没有重置任何账号。
+- 浏览器确认义项／拆分有确认弹窗，拆分后来源与调整历史保留；英文释义切换通过。合并的数据完整性与接口交互由真实 SQLite／组件回归覆盖。
 
-授权的腾讯云 OrcaTerm终端只读检查：原main dad878e、DeepReader服务active／WorkingDirectory=/opt/deepreader-app、SQLite quick_check=ok、Node22.22.2／Python3.12.3、数据库路径保持file:./dev.db、磁盘可用20GB。线上原服务保持运行，未执行真实迁移、服务停机或发布。
+## 已知边界
 
-当前Mac锁屏导致终端画面读取暂停，已请求解锁；不把尚未读到的运行环境／模型检查结果标为通过。部署脚本另加同名worker的完整身份检查，遇到非本app unit时先停止发布，不触碰该服务。
+- “今日完成”仍是当前复习会话计数，刷新或切换后会重置；持久化自然日统计作为 Minor 延后。
+- AI 语言反馈可能误判合理表达；已有“反馈有误”保留争议标记，不把模型反馈自动换成 FSRS 掌握状态。
+- 扫描 PDF／OCR 不在本次范围。
+
+执行过程的技术取舍见 [决策记录](./2026-10-02-release-decisions.md)。

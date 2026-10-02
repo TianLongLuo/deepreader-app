@@ -153,3 +153,7 @@ sudo journalctl -u deepreader-worker.service -n 30 --no-pager
 发布成功后还需在 HTTPS 上实测真实模型首个文本 chunk 先于 complete、英西语义项／短文／反馈、新词整理、隐藏答案的复习和真实日志／due；同时检查词频署名、原书籍、笔记／书签／对话仍正常。未经这些检查不标记整个升级完成。
 
 失败脚本保存最初退出码，只恢复本app旧代码／依赖／构建／原worker状态，并保留现有增量数据库；不自动用旧快照抹掉新收藏、评分或练习。备份目录位于 `/opt/deepreader-app-backups/时间-learning-SHA/`，原始快照为 `SNAPSHOT.db`、演练副本为 `COPY.db`。人工恢复快照会丢失之后新学习记录，应先保留当前库再由拥有者决定；不要把 COPY.db 当成未升级快照。
+
+## 本次实际发布（2026-10-02）
+
+已部署 `79d9ac3ed42370bf18d82c05d88c9fd1d6c93328`。本应用主进程与后台整理进程均 active，HTTPS／鉴权／真实流式／收藏整理／FSRS／练习验收通过。备份目录：`/opt/deepreader-app-backups/20261002-110236-learning-79d9ac3/`。原环境、AI 配置、Nginx、原服务文件及书籍校验一致；没有安装系统包。详细时序、数据保留与已知限制见 `docs/qa/2026-10-01-learning-workbench.md`。之后只更新验收文档的提交不需要重新构建运行代码。
