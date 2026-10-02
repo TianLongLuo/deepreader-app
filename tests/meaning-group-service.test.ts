@@ -17,7 +17,7 @@ it('deduplicates requests and isolates cached results by user, document, languag
 it('never caches invalid or partial chunks',async()=>{
  const c=config(vi.fn().mockResolvedValue({content:JSON.stringify({groups:[{text:'The Greek polis'}]})}));
  for(let i=0;i<2;i++)await expect(generateMeaningGroups({workspaceId:'bad',userId:'bad'},input,c)).rejects.toThrow();
- expect(c.provider.complete).toHaveBeenCalledTimes(2);
+ expect(c.provider.complete).toHaveBeenCalledTimes(4);
 });
 it('does not call a provider for an already-cancelled request',async()=>{const c=config(),a=new AbortController();a.abort();await expect(generateMeaningGroups({workspaceId:'abort',userId:'abort'},input,c,a.signal)).rejects.toMatchObject({name:'AbortError'});expect(c.provider.complete).not.toHaveBeenCalled();});
 it('caps concurrent new calls and releases slots after cancellation',async()=>{

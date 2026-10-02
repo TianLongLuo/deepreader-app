@@ -5,7 +5,10 @@ export const MEANING_GROUP_MAX_TEXT=4000;
 export const normalizeMeaningText=(text:string)=>text.replace(/\s+/g,' ').trim();
 const wordCharacter=(text:string)=>/[\p{L}\p{M}\p{N}'’\-]/u.test(text);
 const boundary=(text:string,offset:number)=>offset===0||offset===text.length||!wordCharacter(text[offset-1])||!wordCharacter(text[offset]);
-const invalid=()=>{throw new Error('意群结果未通过原文校验');};
+export class MeaningGroupAlignmentError extends Error {
+ constructor(){super('意群结果未通过原文校验');this.name='MeaningGroupAlignmentError';}
+}
+const invalid=()=>{throw new MeaningGroupAlignmentError();};
 function alignMeaning(source:string,output:unknown,complete:boolean):MeaningGroupResult{
  const text=normalizeMeaningText(source);
  if(!text||text.length>MEANING_GROUP_MAX_TEXT||!output||typeof output!=='object')return invalid();

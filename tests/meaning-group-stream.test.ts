@@ -22,7 +22,7 @@ it('validates boundaries against the whole source, not a truncated prefix',()=>{
 });
 it.each(['{"groups":[{"text":"The engine"},','{"groups":[{"text":"The engine"},{"text":"invented"}]}'])('never caches incomplete coverage or invalid suffixes',async raw=>{
  let calls=0;const c={...config(async function*(){calls++;yield {content:raw};}),cacheEnabled:true};
- for(let i=0;i<2;i++)await expect(collect(streamMeaningGroups({...scope,userId:raw},input,c))).rejects.toThrow();expect(calls).toBe(2);
+ for(let i=0;i<2;i++)await expect(collect(streamMeaningGroups({...scope,userId:raw},input,c))).rejects.toThrow();expect(calls).toBe(4);
 });
 it('does not pay again for successful validated cache hits',async()=>{
  let calls=0;const c={...config(async function*(){calls++;yield {content:'{"groups":[{"text":"The engine started."}]}'};}),cacheEnabled:true};
@@ -48,4 +48,30 @@ it('cancels the final subscriber upstream without caching its prefix',async()=>{
  const abort=new AbortController(),iterator=streamMeaningGroups({...scope,userId:'cancel'},input,c,abort.signal)[Symbol.asyncIterator]();
  await iterator.next();await iterator.next();abort.abort();
  await expect(iterator.next()).rejects.toMatchObject({name:'AbortError'});expect(upstream.aborted).toBe(true);release();
+});
+
+it('keeps fully grounded dialogue groups when an optional inverted verb phrase is not contiguous',async()=>{
+ const text='“Hannah, what on earth are you doing?”';
+ const c=config(async function*(){yield {content:JSON.stringify({groups:[{text:'“Hannah,'},{text:'what on earth'},{text:'are you doing?”',verbs:['are doing','doing']}]})};});
+ const events=await collect(streamMeaningGroups({...scope,userId:'inverted-dialogue'},{...input,text},c));
+ expect(events.at(-1)).toMatchObject({type:'complete',value:{text,groups:[{text:'“Hannah,',start:0,end:8},{text:'what on earth',start:9,end:22},{text:'are you doing?”',start:23,end:38}],verbs:[{text:'doing',start:31,end:36}]}});
+});
+it('repairs malformed source coverage once rather than permanently leaving a visible paragraph blank',async()=>{
+ let calls=0;
+ const c=config(async function*(){calls++;yield {content:JSON.stringify({groups:calls===1?[{text:'The engine'}]:[{text:'The engine'},{text:'started.',verbs:['started']}]})};});
+ const events=await collect(streamMeaningGroups({...scope,userId:'repair-coverage'},input,c));
+ expect(calls).toBe(2);
+ expect(events.at(-1)).toMatchObject({type:'complete',value:{text:input.text,groups:[{text:'The engine',start:0,end:10},{text:'started.',start:11,end:19}]}});
+});
+it('bounds repair attempts and never marks persistently invalid text as complete',async()=>{
+ let calls=0;
+ const c=config(async function*(){calls++;yield {content:'{"groups":[{"text":"invented"}]}'};});
+ await expect(collect(streamMeaningGroups({...scope,userId:'repair-bounded'},input,c))).rejects.toThrow();
+ expect(calls).toBe(2);
+});
+it('does not retry provider failures or cancellations as source repairs',async()=>{
+ let calls=0;
+ const c=config(async function*(){calls++;throw new Error('provider unavailable');yield {content:''};});
+ await expect(collect(streamMeaningGroups({...scope,userId:'no-provider-retry'},input,c))).rejects.toThrow('provider unavailable');
+ expect(calls).toBe(1);
 });
