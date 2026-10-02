@@ -20,7 +20,7 @@ it('renders contextual and further-understanding drafts while generation remains
   const index=streams.length;return new Response(new ReadableStream({start(c){streams.push(c);},cancel(){canceled[index]=true;}}),{headers:{'Content-Type':'application/x-ndjson'}});
  }));
  const save=vi.fn().mockResolvedValue(undefined);
- const view=render(createElement(WordLookupContent,{documentId:'d',selection:{text:'occasion',contextText:'An occasion.',location:'loc'},entries:[],onSave:save}));
+ const view=render(createElement(WordLookupContent,{userId:'reader',documentId:'d',selection:{text:'occasion',contextText:'An occasion.',location:'loc'},entries:[],onSave:save}));
  await waitFor(()=>expect(streams).toHaveLength(1));
  const send=(index:number,text:string)=>streams[index].enqueue(new TextEncoder().encode(JSON.stringify({type:'start',requestId:'req'+index,cached:false})+'\n'+JSON.stringify({type:'delta',requestId:'req'+index,text})+'\n'));
  await act(async()=>send(0,'Context draft'));
@@ -28,7 +28,7 @@ it('renders contextual and further-understanding drafts while generation remains
  fireEvent.click(screen.getByLabelText('收藏单词'));await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));expect(JSON.parse(save.mock.calls[0][2]).aiExplanation).toBeUndefined();
  fireEvent.click(screen.getByText('例句'));await waitFor(()=>expect(streams).toHaveLength(2));await act(async()=>send(1,'Example draft'));
  expect(screen.getByText('Example draft')).toBeTruthy();
- view.rerender(createElement(WordLookupContent,{documentId:'d',selection:{text:'event',contextText:'An event.',location:'next'},entries:[],onSave:save}));
+ view.rerender(createElement(WordLookupContent,{userId:'reader',documentId:'d',selection:{text:'event',contextText:'An event.',location:'next'},entries:[],onSave:save}));
  await waitFor(()=>expect(streams).toHaveLength(3));expect(screen.queryByText('Example draft')).toBeNull();expect(screen.queryByText('Context draft')).toBeNull();
  view.unmount();await waitFor(()=>expect(canceled).toEqual([true,true,true]));
 });

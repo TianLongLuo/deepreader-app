@@ -2415,7 +2415,7 @@ export default function ReaderLayout({
                 onExplanationReady={handleExplanationReady}
               />
       ) : (
-<WordLookupContent documentId={document.id} selection={toolSelection} entries={entries} onSave={saveReadingEntry}/>
+<WordLookupContent userId={currentUser.id} documentId={document.id} selection={toolSelection} entries={entries} onSave={saveReadingEntry}/>
       )}>
       <div className="relative h-full min-h-0">
         {document.fileType === 'EPUB' ? (
