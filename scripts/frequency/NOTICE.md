@@ -9,3 +9,5 @@
 - Personal processed-material positions and manually chosen priority are separate fields. The position count is not a claim that every book has been scanned, and repeated rendering does not create new occurrences.
 
 Install only in this application's `.runtime/frequency` using `setup.sh`; no system pip, apt, Redis or Python daemon. Runtime queries use stdin to a fixed local script with a 100-item batch, 10-second timeout and 2 MiB output bound. Runtime makes no network dictionary/frequency calls. The installed version and EN/ES data SHA256 are checked before returning values.
+
+The app-only installer supports hosts without `ensurepip` using the official [pip 25.2 wheel](https://pypi.org/project/pip/25.2/) (MIT, Python 3.9+), verified against SHA256 `6d67a2b4e7f14d8b31b8b52648866fa717f45a1eb70e83002f4331d07e953717` before execution. Bootstrap is bounded to 8 MiB/60 seconds, uses `venv --without-pip`, and installs only into `.runtime/frequency` with no system package/global pip changes.

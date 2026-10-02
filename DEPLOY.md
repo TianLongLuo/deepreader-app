@@ -117,7 +117,7 @@ node_modules/.bin/tsx scripts/migrate-vocabulary.ts --database /ABSOLUTE/BACKUP/
 bash scripts/frequency/setup.sh
 ```
 
-setup 使用完整依赖 hash 锁定文件；下载后运行期仅调用本地官方 wordfreq 3.1.1 数据，不请求网络词典或词频 API。离线安装可先按 requirements.lock 下载到应用专用 wheel 目录，再用该 venv 的 `python -m pip --no-index --find-links ... --require-hashes -r scripts/frequency/requirements.lock`。环境不可从其他机器直接搬运，需本机重建。代码 Apache 2.0，数据 CC BY-SA 4.0 及附加来源署名，完整记录见 scripts/frequency/NOTICE.md、UPSTREAM-METADATA.txt 与 /frequency/NOTICE.txt。
+setup 使用 `venv --without-pip`，缺少 ensurepip 时先校验固定 pip 25.2 官方 wheel 的 SHA256，再仅在应用 venv 安装；不执行 apt，也不修改系统 Python。setup 使用完整依赖 hash 锁定文件；下载后运行期仅调用本地官方 wordfreq 3.1.1 数据，不请求网络词典或词频 API。离线安装可先按 requirements.lock 下载到应用专用 wheel 目录，再用该 venv 的 `python -m pip --no-index --find-links ... --require-hashes -r scripts/frequency/requirements.lock`。环境不可从其他机器直接搬运，需本机重建。代码 Apache 2.0，数据 CC BY-SA 4.0 及附加来源署名，完整记录见 scripts/frequency/NOTICE.md、UPSTREAM-METADATA.txt 与 /frequency/NOTICE.txt。
 
 Zipf 产品分档：≥4 较常见，≥3 一般，>0 较少见；无数据为“暂无数据”，不当作生僻词。数据约截至2021年，不是实时或行业频率。材料遇见数仅统计已解析/完成意群分析的稳定原文位置，重复处理不增加；不是阅读次数、收藏次数或全站全部书籍统计。个人优先级另行保存和筛选。
 
