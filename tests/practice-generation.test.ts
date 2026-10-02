@@ -48,3 +48,9 @@ it('rechecks model access after generation and rejects modified or deleted sourc
  const ids=await seed();mockModel(ids);const configValue=await config.resolve();config.resolve.mockReset();config.resolve.mockResolvedValueOnce(configValue).mockRejectedValue(new Error('PRIVATE revoked'));
  const service=createPracticeService(db.prisma);await expect(async()=>{for await(const _ of service.streamPractice(db.scope,input,new AbortController().signal)){} }).rejects.toMatchObject({code:'UNAVAILABLE'});expect((await db.prisma.learningTask.findFirstOrThrow()).status).toBe('failed');
 });
+it('puts the requested passage-only length and validated bounds in the actual model prompt',async()=>{
+ const ids=await seed();mockModel(ids);const cfg=await config.resolve(),original=cfg.provider.stream,prompts:string[]=[];
+ cfg.provider.stream=async function*(request:{systemPrompt:string}){prompts.push(request.systemPrompt);yield* original(request);};
+ for await(const _ of createPracticeService(db.prisma).streamPractice(db.scope,input,new AbortController().signal)){}
+ expect(prompts[0]).toContain('Aim for 100 words');expect(prompts[0]).toContain('70 to 130 words');expect(prompts[0]).toContain('do not count questions');
+});
