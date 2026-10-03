@@ -122,3 +122,30 @@ it('removes built-in arrow glyphs, wires blank edge navigation, and excludes ver
  fireEvent.change(screen.getByLabelText('阅读方式'),{target:{value:'vertical'}});await waitFor(()=>expect(fixture.instances).toHaveLength(2));
  expect(view.container.querySelector('[data-reader-page-edge]')).toBeNull();
 });
+
+it('removes paragraph focus targets in flip mode while retaining word click and restoring paragraph hover on exit',async()=>{
+ const calls:string[]=[];vi.stubGlobal('fetch',async(url:string,options?:RequestInit)=>{calls.push(url);if(url==='/api/semantic-flip')return new Response([JSON.stringify({type:'start',requestId:'r',cached:false}),JSON.stringify({type:'complete',requestId:'r',value:{replacement:'a feline',provider:'fixture',model:'fixture'}})].join('\n'),{headers:{'Content-Type':'application/x-ndjson'}});return Response.json({items:[],progress:{location:anchor,percentage:30}});});
+ const view=mount();await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
+ const doc=fixture.instances[0].content.document,p=doc.querySelector('p')!;
+ fireEvent.mouseEnter(p);expect(p.dataset.readerHovered).toBe('true');expect(p.tabIndex).toBe(0);
+ p.focus();expect(doc.activeElement).toBe(p);fireEvent.click(screen.getByLabelText('语义翻牌'));
+ await waitFor(()=>expect(p.hasAttribute('tabindex')).toBe(false));
+ expect(doc.activeElement).not.toBe(p);expect(p.title).toBe('');
+ fireEvent.mouseEnter(p);fireEvent.mouseLeave(p);expect(p.dataset.readerHovered).toBe('false');expect(p.dataset.readerActive).toBe('false');
+ const r=doc.createRange();r.setStart(p.firstChild!,0);r.setEnd(p.firstChild!,3);(doc as any).caretRangeFromPoint=()=>r;Object.defineProperty(doc.defaultView!.Range.prototype,'getClientRects',{configurable:true,value:()=>[{left:0,right:100,top:0,bottom:40,width:100,height:40}]});
+ fireEvent.click(p,{clientX:10,clientY:10});await waitFor(()=>expect(calls).toContain('/api/semantic-flip'));expect(screen.queryByTestId('grammar-panel')).toBeNull();
+ fireEvent.click(screen.getByLabelText('语义翻牌'));await waitFor(()=>expect(p.tabIndex).toBe(0));fireEvent.mouseEnter(p);expect(p.dataset.readerHovered).toBe('true');
+ fireEvent.keyDown(p,{key:'Enter'});await waitFor(()=>expect(screen.getByTestId('grammar-panel')).toBeTruthy());
+});
+
+it('drops PDF whole-paragraph hover and focus rings in flip mode and restores them on exit',async()=>{
+ vi.stubGlobal('fetch',async(url:string)=>url.endsWith('/text')?Response.json({pageCount:1,paragraphs:[{id:'pdfp',orderIndex:0,pageNumber:1,text:'CAT after CAT. Book paragraph with sufficient prose.'}]}):Response.json({items:[],progress:null}));
+ const view=render(createElement(ReaderLayout,{document:{id:'pdfbook',title:'PDF Fixture',fileType:'PDF',language:'en'},currentUser:{id:'user',email:'fixture@example.test'}}));
+ await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
+ const paragraph=view.container.querySelector<HTMLElement>('[data-pdf-selection-key]')!;
+ expect(paragraph.className).toContain('hover:bg-muted');expect(paragraph.className).toContain('focus-visible:ring-2');
+ fireEvent.click(screen.getByLabelText('语义翻牌'));
+ expect(paragraph.className).not.toMatch(/(?:hover:bg-|focus-visible:ring|\bring-1\b)/);
+ fireEvent.mouseMove(paragraph);expect(screen.queryByTestId('grammar-panel')).toBeNull();
+ fireEvent.click(screen.getByLabelText('语义翻牌'));expect(paragraph.className).toContain('hover:bg-muted');expect(paragraph.className).toContain('focus-visible:ring-2');
+});

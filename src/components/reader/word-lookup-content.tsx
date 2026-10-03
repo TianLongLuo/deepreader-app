@@ -45,7 +45,7 @@ export default function WordLookupContent({userId,documentId,selection,entries,o
   }catch{if(id===generation.current&&!c.signal.aborted)setNotice('发音暂不可用，可先参考音标。');}
  }
  async function expand(topic:string){
-  await startExtra({documentId,mode:'ask',text:context.slice(0,24000),question:topic+': '+word,sourceLanguage,language:explanationLanguage,definitionMode:bilingualMode?'bilingual':'monolingual',level:readingLevel});
+  await startExtra({documentId,mode:'ask',targetWord:word,text:context.slice(0,24000),question:topic+': '+word,sourceLanguage,language:explanationLanguage,definitionMode:bilingualMode?'bilingual':'monolingual',level:readingLevel});
  }
  async function save(){const id=generation.current;setSaving(true);try{await onSave('word',word,JSON.stringify(savedLookupPayload({word,context,sourceLanguage},contextual,dictionary??undefined)),selection?.location);if(id===generation.current)setNotice('已加入生词');}catch{if(id===generation.current)setNotice('收藏失败，请重试。');}finally{if(id===generation.current)setSaving(false);}}
  if(!word)return <p className="p-5 text-sm text-muted-foreground">点击正文中的单词，查看语境释义。</p>;

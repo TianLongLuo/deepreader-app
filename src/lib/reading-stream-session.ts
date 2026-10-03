@@ -5,7 +5,9 @@ type Run=(input:ReadingRequest,signal:AbortSignal,onDraft:(text:string)=>void)=>
 export async function requestReadingAnswer(input:ReadingRequest,signal:AbortSignal,onDraft:(text:string)=>void=()=>{}):Promise<ReadingAnswer>{
  const response=await fetch('/api/reading-assistant',{method:'POST',signal,headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(input)});
  let draft='';
- const answer=await consumeAIStream<ReadingAnswer>(response,signal,event=>{if(!signal.aborted&&event.type==='delta'){draft+=event.text;onDraft(draft);}});
+ let answer:ReadingAnswer;
+ try{answer=await consumeAIStream<ReadingAnswer>(response,signal,event=>{if(!signal.aborted&&event.type==='delta'){draft+=event.text;onDraft(draft);}});}
+ catch(error){if(!signal.aborted&&error instanceof AIStreamError&&error.code==='INVALID_LANGUAGE')onDraft('');throw error;}
  signal.throwIfAborted();if(!answer||typeof answer.answer!=='string'||!answer.answer.trim())throw new AIStreamError('INVALID_OUTPUT','结果未通过校验，请重试');
  return answer;
 }
@@ -23,7 +25,7 @@ export function createReadingStreamSession(changed:(state:ReadingStreamState)=>v
     const answer=await run(input,c.signal,draft=>{if(current())publish({...state,draft});});
     if(current())publish({...state,answer,busy:false});
    }catch(error){
-    if(current())publish({...state,busy:false,error:error instanceof AIStreamError?error.message:'生成未完成，已显示内容尚未校验，请重试'});
+    if(current())publish({...state,...(error instanceof AIStreamError&&error.code==='INVALID_LANGUAGE'?{draft:'',answer:null}:{}),busy:false,error:error instanceof AIStreamError?error.message:'生成未完成，已显示内容尚未校验，请重试'});
    }finally{if(generation===id){controller=null;if(state.busy)publish({...state,busy:false});}}
   },
   reset(){generation++;controller?.abort();controller=null;publish({draft:'',answer:null,busy:false,error:''});},

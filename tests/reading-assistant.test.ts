@@ -226,7 +226,7 @@ it("checks authentication and ownership before resolving AI or generating", asyn
   expect(mocks.resolve).not.toHaveBeenCalled();
 });
 it('sends the selected word and full context with independent explanation language', async () => {
-  const complete=vi.fn().mockResolvedValue({content:JSON.stringify({answer:'A young boy.',citations:[{quote:'El niño está aquí.'}]})});
+  const complete=vi.fn().mockResolvedValueOnce({content:JSON.stringify({answer:'A young boy.',citations:[{quote:'El niño está aquí.'}]})}).mockResolvedValue({content:JSON.stringify({answer:'这里指小男孩。',citations:[{quote:'El niño está aquí.'}]})});
   const c=config(complete);
   const request=readingRequestSchema.parse({documentId:'word-languages',mode:'word',targetWord:'niño',text:'El niño está aquí.',previousText:'Su madre espera.',sourceLanguage:'es',language:'English',definitionMode:'monolingual'});
   await generateReadingAnswer({workspaceId:'languages',userId:'fixture'},request,c);
@@ -237,11 +237,11 @@ it('sends the selected word and full context with independent explanation langua
   expect(prompt.userPrompt).toContain('English');
   await generateReadingAnswer({workspaceId:'languages',userId:'fixture'},{...request,definitionMode:'bilingual',language:'Chinese'},c);
   expect(complete).toHaveBeenCalledTimes(2);
-  expect(complete.mock.calls[1][0].systemPrompt).toContain('source language AND Chinese');
+  expect(complete.mock.calls[1][0].systemPrompt).toContain('Write the contextual explanation ONLY in Chinese');
 });
 
 it('requests a compact word explanation without repeating dictionary material',async()=>{
- const c=config();await generateReadingAnswer({workspaceId:'compact',userId:'one'},{...input,mode:'word',targetWord:'Alice'},c);
+ const c=config();await generateReadingAnswer({workspaceId:'compact',userId:'one'},{...input,mode:'word',targetWord:'Alice',language:'English'},c);
  const request=(c.provider.complete as any).mock.calls[0][0];
  expect(request.maxTokens).toBeLessThanOrEqual(600);
  expect(request.systemPrompt).toContain('at most two short sentences');

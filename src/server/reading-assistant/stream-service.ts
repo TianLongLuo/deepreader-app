@@ -1,9 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {AIStreamError,streamBudget,type AIStreamEvent} from '@/lib/ai-stream';
+import {readingExplanationLanguageMatches} from '@/lib/reading-language';
 import {readPartialString} from '@/lib/partial-json-string';
+import type {AICompletionStreamChunk} from '@/types/ai';
 import type {ResolvedAIConfig} from '@/server/ai/config-resolver';
 import {awaitWithSignal} from './cancellation';
-import {cachedReadingAnswer,parseGroundedAnswer,readingAnswerKey,readingCompletionRequest,readingRequestSchema,scopeAnswerText,storeReadingAnswer,type ReadingAnswer,type ReadingRequest} from './service';
+import {cachedReadingAnswer,parseGroundedAnswer,readingAnswerKey,readingCompletionRequest,readingLanguageBudget,readingRequestSchema,scopeAnswerText,storeReadingAnswer,type ReadingAnswer,type ReadingRequest} from './service';
 type WithoutId<E>=E extends {requestId:string}?Omit<E,'requestId'>:never;
 export type GeneratedEvent<T>=WithoutId<Exclude<AIStreamEvent<T>,{type:'start'|'heartbeat'}>>;
 type Subscriber<T>={queue:GeneratedEvent<T>[];wake?:()=>void};
@@ -53,16 +55,41 @@ export async function* streamReadingAnswer(scope:{workspaceId:string;userId:stri
  if(cached){yield {requestId,type:'complete',value:{...cached,provider:config.providerKey,model:config.model}};return;}
  if(!config.provider.stream)throw new AIStreamError('STREAM_UNSUPPORTED','');
  for await(const event of sharedGeneratedEvents<ReadingAnswer>('reading-stream:'+key,signal,async function*(upstream){
-  let raw='',displayed='';
-  for await(const chunk of config.provider.stream!(readingCompletionRequest(input,config,upstream))){
-   upstream.throwIfAborted();raw+=chunk.content;if(raw.length>128*1024)throw new AIStreamError('TOO_LARGE','');
-   if(input.mode==='quiz')continue; // Answers must not leak in a partial free-form intro.
-   const answer=readPartialString(raw,'answer');
-   const draft=input.mode==='summary'&&answer?scopeAnswerText(answer):answer;
-   if(!draft.startsWith(displayed))throw new AIStreamError('INVALID_OUTPUT','');
-   if(draft.length>displayed.length){yield {type:'delta',text:draft.slice(displayed.length)};displayed=draft;}
-  }
-  upstream.throwIfAborted();const value={...parseGroundedAnswer(raw,input),provider:config.providerKey,model:config.model};
-  storeReadingAnswer(key,value,config);yield {type:'complete',value};
+  const budget=readingLanguageBudget(input,upstream);
+  try{
+   let displayed='';
+   for(let attempt=0;attempt<2;attempt++){
+    let raw='';
+    for await(const chunk of boundedReadingChunks(config.provider.stream!(readingCompletionRequest(input,config,budget.signal,attempt>0)),budget.signal)){
+     budget.signal.throwIfAborted();raw+=chunk.content;if(raw.length>128*1024)throw new AIStreamError('TOO_LARGE','');
+     if(input.mode==='quiz')continue; // Answers must not leak in a partial free-form intro.
+     const answer=readPartialString(raw,'answer');
+     const draft=input.mode==='summary'&&answer?scopeAnswerText(answer):answer;
+     // Chinese needs two actual explanatory characters; quoted source/target words
+     // alone never unlock a foreign-language draft. Other languages use the same
+     // conservative guard without waiting for provider EOF.
+     if(!readingExplanationLanguageMatches(draft,input))continue;
+     if(!draft.startsWith(displayed))throw new AIStreamError('INVALID_OUTPUT','');
+     if(draft.length>displayed.length){yield {type:'delta',text:draft.slice(displayed.length)};displayed=draft;}
+    }
+    budget.signal.throwIfAborted();
+    try{
+     const value={...parseGroundedAnswer(raw,input),provider:config.providerKey,model:config.model};
+     storeReadingAnswer(key,value,config);yield {type:'complete',value};return;
+    }catch(error){
+     // A streamed prefix is append-only. Repair only before publication; an invalid
+     // language after publication is a terminal typed error that clears the draft.
+     if(attempt||displayed||!(error instanceof AIStreamError)||error.code!=='INVALID_LANGUAGE')throw error;
+    }
+   }
+   throw new AIStreamError('INVALID_LANGUAGE','');
+  }finally{budget.dispose();}
  }))yield {...event,requestId};
+}
+
+/** The lookup deadline also bounds a stalled provider iterator, not just fetch. */
+async function* boundedReadingChunks(source:AsyncIterable<AICompletionStreamChunk>,signal:AbortSignal){
+ const iterator=source[Symbol.asyncIterator]();
+ try{while(true){const chunk=await awaitWithSignal(iterator.next(),signal);if(chunk.done)return;yield chunk.value;}}
+ finally{if(signal.aborted)void iterator.return?.().catch(()=>{});else await iterator.return?.();}
 }

@@ -16,6 +16,11 @@ Do not duplicate tense, person, or modality already carried by adjacent source a
 For example, in 'We will negotiate a price', translate only 'negotiate' to Spanish 'negociar', not future 'negociarán'; will stays unchanged.
 Use the specified targetLanguage. Maximum six whitespace-delimited tokens and 120 UTF-16 characters, no markup or line breaks.`;
 class SemanticFlipFormatError extends Error{}
+/** Routing IDs/CFIs are needed for ACL/cache matching, not language inference. */
+function semanticSource(input:SemanticFlipInput){
+ const {sourceText,start,end,targetWord,previousText,nextText,sourceLanguage,targetLanguage}=input;
+ return {sourceText,start,end,targetWord,previousText,nextText,sourceLanguage,targetLanguage};
+}
 function keyFor(scope:ReadingAIScope,input:SemanticFlipInput,config:ResolvedAIConfig){
  return createHash('sha256').update(JSON.stringify([scope.workspaceId,scope.userId,input.documentId,input.occurrence,input.sourceText,input.start,input.end,input.targetWord,input.previousText??'',input.nextText??'',input.sourceLanguage,input.targetLanguage,config.providerKey,config.model,config.settingsHash,config.promptVersion,PROMPT_VERSION])).digest('hex');
 }
@@ -49,7 +54,7 @@ export async function* streamSemanticFlip(scope:ReadingAIScope,input:SemanticFli
      const release=acquireReadingAIQuota(scope);
      try{
       let raw='';
-      for await(const chunk of config.provider.stream!({signal:combined,systemPrompt,userPrompt:JSON.stringify({data:input,formatRepair:attempt===1}),maxTokens:Math.min(config.maxTokens,256),temperature:.1})){
+      for await(const chunk of config.provider.stream!({signal:combined,systemPrompt,userPrompt:JSON.stringify({data:semanticSource(input),formatRepair:attempt===1}),maxTokens:Math.min(config.maxTokens,256),temperature:.1})){
        combined.throwIfAborted();raw+=chunk.content;if(raw.length>8000)throw new AIStreamError('TOO_LARGE','');
       }
       combined.throwIfAborted();return raw;

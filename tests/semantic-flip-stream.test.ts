@@ -62,3 +62,11 @@ it('instructs one-word translation not to duplicate grammar carried by adjacent 
  let prompt='';const c=config(async function*(request){prompt=request.systemPrompt;yield {content:'{"replacement":"negociar"}'};});
  const sourceText='We will negotiate a better price.';await collect(streamSemanticFlip(scope(),{...input,targetLanguage:'es',sourceText,start:8,end:17,targetWord:'negotiate'},c));expect(prompt).toContain('will negotiate');expect(prompt).toContain('negociar');expect(prompt).toContain('Do not duplicate tense');
 });
+it('sends only semantic source data to the model, not internal routing IDs or long CFI metadata',async()=>{
+ let seen='';const c=config(async function*(request){seen=request.userPrompt;yield {content:'{"replacement":"event"}'};});
+ const routed={...input,documentId:'private-document-route',occurrence:'epubcfi-internal-routing-'+('x'.repeat(1800)),previousText:'It was a celebration.',nextText:'She arrived early.'};
+ await collect(streamSemanticFlip(scope(),routed,c));
+ const payload=JSON.parse(seen);expect(payload.data).toEqual({sourceText:routed.sourceText,start:routed.start,end:routed.end,targetWord:routed.targetWord,previousText:routed.previousText,nextText:routed.nextText,sourceLanguage:'en',targetLanguage:'en'});
+ expect(seen).not.toContain(routed.documentId);expect(seen).not.toContain(routed.occurrence);
+ expect(seen.length).toBeLessThan(400);expect(payload.formatRepair).toBe(false);
+});

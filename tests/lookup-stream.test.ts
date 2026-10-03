@@ -42,3 +42,15 @@ it('streams reading-tool actions immediately and cancels when the tool is hidden
  await act(async()=>stream.enqueue(new TextEncoder().encode('{"type":"start","requestId":"tools","cached":false}\n{"type":"delta","requestId":"tools","text":"Reading draft"}\n')));
  expect(screen.getByText('Reading draft')).toBeTruthy();view.rerender(createElement(ReadingTools,{...props,open:false}));await waitFor(()=>expect(canceled).toBe(true));
 });
+it('includes the actual target word in further-understanding requests for source collocations',async()=>{
+ const requests:any[]=[];
+ useReaderStore.setState({sourceLanguage:'en',explanationLanguage:'English',bilingualMode:false});
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init:RequestInit)=>{
+  if(url.startsWith('/api/dictionary'))return Response.json({word:'occasion',meanings:[]});
+  requests.push(JSON.parse(String(init.body)));const requestId='lookup-target-'+requests.length;
+  return new Response([{type:'start',requestId,cached:false},{type:'complete',requestId,value:{answer:'A special event.',citations:[]}}].map(e=>JSON.stringify(e)).join('\n')+'\n',{headers:{'Content-Type':'application/x-ndjson'}});
+ }));
+ render(createElement(WordLookupContent,{userId:'reader',documentId:'d',selection:{text:'occasion',contextText:'An occasion.',location:'loc'},entries:[],onSave:async()=>{}}));
+ await waitFor(()=>expect(requests).toHaveLength(1));fireEvent.click(screen.getByText('常见搭配'));
+ await waitFor(()=>expect(requests).toHaveLength(2));expect(requests[1]).toMatchObject({mode:'ask',question:'常见搭配: occasion',targetWord:'occasion'});
+});

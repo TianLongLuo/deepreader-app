@@ -38,7 +38,7 @@ it('cancellation prevents storing generated Spanish answers and cache entries',a
 });
 it('keeps multilingual citations exact and caches different source/output languages separately',async()=>{
  const input=readingRequestSchema.parse({documentId:'d',mode:'word',sourceLanguage:'es',text:source,language:'Chinese'});
- const answer={answer:'habríamos 是 haber 的条件式第一人称复数。',citations:[{quote:'habríamos salido'}]};const config=await mocks.resolve();config.provider.complete=vi.fn().mockResolvedValue({content:JSON.stringify(answer)});
+ const answer={answer:'habríamos 是 haber 的条件式第一人称复数。',citations:[{quote:'habríamos salido'}]};const config=await mocks.resolve();config.provider.complete=vi.fn().mockImplementation(async(request:{userPrompt:string})=>({content:JSON.stringify({...answer,answer:JSON.parse(request.userPrompt).outputLanguage==='en'?'habríamos is the first-person plural conditional form of haber.':answer.answer})}));
  const scope={workspaceId:'parity-cache',userId:'u'};expect((await generateReadingAnswer(scope,input,config)).citations[0].quote).toBe('habríamos salido');await generateReadingAnswer(scope,input,config);
  await generateReadingAnswer(scope,{...input,language:'English'},config);await generateReadingAnswer(scope,{...input,sourceLanguage:'en'},config);expect(config.provider.complete).toHaveBeenCalledTimes(3);
  expect(()=>parseGroundedAnswer(JSON.stringify({...answer,citations:[{quote:'habriamos salido'}]}),input)).toThrow();

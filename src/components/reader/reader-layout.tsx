@@ -263,6 +263,10 @@ const INTERACTIVE_PARAGRAPH_CSS = `
       0 8px 24px rgba(154, 52, 18, 0.10);
   }
 
+  html[data-reader-semantic-flip='true'] [data-reader-interactive='true'] {
+    outline: none !important;
+  }
+
   .reader-sentence-dim {
     color: rgba(154, 52, 18, 0.42) !important;
   }
@@ -1307,7 +1311,7 @@ export default function ReaderLayout({
   useEffect(()=>{
     for(const doc of [...(sessionRef.current?.contents().map(c=>c.document)??[]),globalThis.document]){
       doc.documentElement.dataset.readerSemanticFlip=String(effectiveFlip);doc.dispatchEvent(new Event('reader-mode-change'));
-      doc.querySelectorAll<HTMLElement>('[data-reader-interactive]').forEach(el=>{el.title=effectiveFlip?'':'点击单词查词；点击段落边缘或按 Enter 分析整段';if(effectiveFlip)setParagraphState(el,{hovered:false,active:false});});
+      doc.querySelectorAll<HTMLElement>('[data-reader-interactive]').forEach(el=>{el.title=effectiveFlip?'':'点击单词查词；点击段落边缘或按 Enter 分析整段';if(effectiveFlip){if(doc.activeElement===el)el.blur();el.removeAttribute('tabindex');setParagraphState(el,{hovered:false,active:false});}else el.tabIndex=0;});
     }
     if(effectiveFlip){clearUnderlineAnnotations();closeExplanationPanel();setToolsOpen(false);setShowDetailed(false);setUtilityOpen(false);setToolSelection(null);useReaderStore.getState().setStudyPinned(false);sessionRef.current?.setProjectionEnabled(true);ensurePdfProjections();notifyGeometry();}
     else {sessionRef.current?.setProjectionEnabled(false);for(const entry of pdfProjections.current.values()){entry.off();entry.projection.dispose();}pdfProjections.current.clear();boundFlips.current=new WeakMap();notifyGeometry();}
@@ -1537,7 +1541,7 @@ export default function ReaderLayout({
 
       const listen=<K extends keyof HTMLElementEventMap>(name:K,fn:(event:HTMLElementEventMap[K])=>void)=>{element.addEventListener(name,fn);own(()=>element.removeEventListener(name,fn));};
       own(()=>{delete element.dataset.readerInteractive;});
-      element.tabIndex = 0;
+      if(!flipModeRef.current)element.tabIndex=0;else element.removeAttribute('tabindex');
       element.title = flipModeRef.current?'':'点击单词查词；点击段落边缘或按 Enter 分析整段';
       listen('keydown',event=>{if(flipModeRef.current)return;if(event.key==='Enter'&&event.target===element){event.preventDefault();handleParagraphClick(element,contents);}});
       element.dataset.readerInteractive = 'true';
@@ -1556,6 +1560,7 @@ export default function ReaderLayout({
       listen('mousemove', (event) => {const hit=wordAtPoint(contents.document,event.clientX,event.clientY,element);highlightWord(contents.document,hit?.range);});
       listen('mouseleave', () => {
         highlightWord(contents.document);
+        if(flipModeRef.current){setParagraphState(element,{hovered:false,active:false});return;}
         if (activeElementRef.current === element) {
           setParagraphState(element, { hovered: false, active: true });
           return;
@@ -2570,7 +2575,7 @@ export default function ReaderLayout({
                               paragraph.id
                             );
                             const isActive =
-                              selectedParagraph?.key === selectionKey;
+                              !effectiveFlip && selectedParagraph?.key === selectionKey;
                             const explanation = isActive
                               ? pdfExplanations[selectionKey]
                               : null;
@@ -2581,6 +2586,7 @@ export default function ReaderLayout({
                               <button
                                 type="button"
                                 data-pdf-selection-key={selectionKey}
+                                tabIndex={effectiveFlip?-1:0}
                                 style={{fontSize, lineHeight,overflowWrap:'anywhere'}}
                                 onMouseMove={event=>highlightWord(event.currentTarget.ownerDocument,wordAtPoint(event.currentTarget.ownerDocument,event.clientX,event.clientY,event.currentTarget)?.range)}
                                 onMouseLeave={event=>highlightWord(event.currentTarget.ownerDocument)}
@@ -2588,10 +2594,11 @@ export default function ReaderLayout({
                                   handlePdfParagraphClick(paragraph, event)
                                 }
                                 className={cn(
-                                  'mb-[1em] block w-full break-words rounded-md px-0.5 py-0.5 text-left font-sans text-inherit transition-colors focus-visible:outline-none focus-visible:ring-2',
+                                  'mb-[1em] block w-full break-words rounded-md px-0.5 py-0.5 text-left font-sans text-inherit transition-colors focus-visible:outline-none',
+                                  !effectiveFlip && 'focus-visible:ring-2',
                                   'whitespace-pre-line',
                                   entries.some(e=>e.kind==='note'&&e.location===selectionKey)?'underline decoration-orange-400 decoration-2 underline-offset-4':'',
-                                  pdfReaderParagraphClasses[theme],
+                                  !effectiveFlip && pdfReaderParagraphClasses[theme],
                                   isActive
                                     ? pdfReaderActiveParagraphClasses[theme]
                                     : 'bg-transparent'

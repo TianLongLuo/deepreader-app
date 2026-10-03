@@ -11,9 +11,11 @@ export async function runReaderModesQA(page){
  await page.evaluate(cfi=>qa.flipWord(cfi),cfis.first);
  assert(await page.evaluate(()=>qa.completed().length)===1,'No completed flip');assert(await page.evaluate(()=>qa.canonicalWordCFI('CAT',1))===cfis.second,'Second duplicate CFI drifted');
  let body=await page.frames()[1].locator('#duplicates').textContent();assert(body.startsWith('CAT after CAT.')&&await page.frames()[1].locator('[data-semantic-replacement]').getAttribute('data-semantic-replacement')==='a feline animal','Wrong occurrence visually replaced');
+ await page.mouse.move(1390,700);await page.waitForTimeout(350);
+ await page.frames()[1].locator('body').click({position:{x:1,y:200}}); // Real pointer focus: flip mode intentionally removes paragraph tab stops.
  await page.evaluate(cfi=>qa.selectOriginal(cfi),cfis.first);
  const originalCopy=await page.evaluate(()=>{const doc=document.querySelector('iframe').contentDocument;let value;const e=new Event('copy',{cancelable:true,bubbles:true});Object.defineProperty(e,'clipboardData',{value:{setData:(_type,text)=>value=text}});doc.dispatchEvent(e);return {value,prevented:e.defaultPrevented};});assert(originalCopy.value==='CAT'&&originalCopy.prevented,'Copy lost canonical source');
- await page.frames()[1].locator('#duplicates').press('Alt+Enter');await ready();assert(await page.evaluate(()=>qa.completed().length)===0,'Full multiword replacement did not restore');
+ await page.keyboard.press('Alt+Enter');await ready();assert(await page.evaluate(()=>qa.completed().length)===0,'Full multiword replacement did not restore');
  await page.evaluate(cfi=>qa.flipWord(cfi),cfis.second);await page.frames()[1].locator('body').press('Escape');await ready();assert(await page.evaluate(()=>qa.completed().length)===0,'Escape did not restore');
  await tools();await page.getByRole('checkbox',{name:'意群阅读',exact:true}).check();
  const positions=new Set();for(let i=0;i<10;i++){positions.add(await page.evaluate(()=>qa.savedProgress()?.location));await tools();await page.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForTimeout(150);}

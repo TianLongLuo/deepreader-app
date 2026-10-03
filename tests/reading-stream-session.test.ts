@@ -22,3 +22,18 @@ it('keeps a failed stream draft visible but unvalidated and shows an error',asyn
  const session=createReadingStreamSession(()=>{},async(_input,_signal,onDraft)=>{onDraft('Partial');throw new Error('provider secret');});
  await session.start(input);expect(session.state()).toMatchObject({draft:'Partial',answer:null,busy:false});expect(session.state().error).not.toContain('secret');expect(session.state().error).not.toBe('');session.dispose();
 });
+it('clears a rejected-language draft instead of keeping a misleading explanation visible',async()=>{
+ const {AIStreamError}=await import('@/lib/ai-stream');
+ const session=createReadingStreamSession(()=>{},async(_input,_signal,onDraft)=>{onDraft('Wrong language draft');throw new AIStreamError('INVALID_LANGUAGE','解释语言与所选语言不一致，请重试');});
+ await session.start(input);expect(session.state()).toEqual({draft:'',answer:null,busy:false,error:'解释语言与所选语言不一致，请重试'});session.dispose();
+});
+it('clears typed wrong-language drafts in the legacy lookup transport as well',async()=>{
+ const {vi}=await import('vitest'),{requestReadingAnswer}=await import('@/lib/reading-stream-session'),drafts:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response([
+  {type:'start',requestId:'language-clear',cached:false},
+  {type:'delta',requestId:'language-clear',text:'释义'},
+  {type:'error',requestId:'language-clear',code:'INVALID_LANGUAGE',message:'解释语言与所选语言不一致，请重试'},
+ ].map(e=>JSON.stringify(e)).join('\n')+'\n',{headers:{'Content-Type':'application/x-ndjson'}})));
+ try{await expect(requestReadingAnswer(input,new AbortController().signal,text=>drafts.push(text))).rejects.toMatchObject({code:'INVALID_LANGUAGE'});expect(drafts).toEqual(['释义','']);}
+ finally{vi.unstubAllGlobals();}
+});

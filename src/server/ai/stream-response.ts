@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {AIStreamError,parseAIStreamEvent,streamBudget,type AIStreamEvent} from '@/lib/ai-stream';
-const publicMessages:Record<string,string>={FAILED:'生成未完成，请稍后重试',INVALID_OUTPUT:'结果未通过校验，请重试',INVALID_STREAM:'流式响应未完成，请重试',TOO_LARGE:'响应超过大小限制，请缩短内容后重试',RATE_LIMITED:'请求较频繁，请稍后重试',UNAVAILABLE:'请检查 AI 权限和模型设置后重试',STREAM_UNSUPPORTED:'当前模型未启用流式输出，请检查设置',TIMEOUT:'生成超时，请重试'};
+const publicMessages:Record<string,string>={INVALID_LANGUAGE:'解释语言与所选语言不一致，请重试',FAILED:'生成未完成，请稍后重试',INVALID_OUTPUT:'结果未通过校验，请重试',INVALID_STREAM:'流式响应未完成，请重试',TOO_LARGE:'响应超过大小限制，请缩短内容后重试',RATE_LIMITED:'请求较频繁，请稍后重试',UNAVAILABLE:'请检查 AI 权限和模型设置后重试',STREAM_UNSUPPORTED:'当前模型未启用流式输出，请检查设置',TIMEOUT:'生成超时，请重试'};
 export function publicAIStreamError(error:unknown){
  const proposed=error instanceof AIStreamError?error.code:(error as {code?:unknown}|null)?.code;
  const code=typeof proposed==='string'&&Object.hasOwn(publicMessages,proposed)?proposed:'FAILED';
