@@ -1,5 +1,5 @@
 import {syncReadingScroll,updateReadingBuffer,type ContinuousManagerPort,type ReadingWindowGeometry} from './reading-flow';
-export type LoadedViewPort={document:Document;contents:{resizeCheck():void};layout:{format(contents:unknown):unknown};expand():void;width():number;height():number};
+export type LoadedViewPort={document:Document;contents:{resizeCheck():void};layout:{width?:number;height?:number;format(contents:unknown):unknown};syncLayoutSize?():void;expand():void;width():number;height():number};
 export type EpubReflowPort={dispose?():void;views():readonly LoadedViewPort[];manager:ContinuousManagerPort;geometry():ReadingWindowGeometry|null;display(cfi:string):Promise<unknown>;alignAnchor?(cfi:string):void;reportLocation():unknown;nextFrame():Promise<void>};
 function wait<T>(operation:PromiseLike<T>|T,signal:AbortSignal):Promise<T>{
  return new Promise((resolve,reject)=>{
@@ -15,10 +15,15 @@ async function bounded<T>(signal:AbortSignal,run:(local:AbortSignal)=>Promise<T>
  try{return await wait(run(local.signal),local.signal);}finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
 }
 /** Explicit formatting/expansion is required: a root ResizeObserver cannot prove column-tail reachability. */
+export async function formatLoadedEpubView(view:LoadedViewPort,signal:AbortSignal):Promise<void>{
+ // Native setLayout formats the body but leaves IframeView's independent size
+ // locks untouched. Parent-only resizes must update those locks before reflow.
+ signal.throwIfAborted();view.syncLayoutSize?.();await wait(view.layout.format(view.contents),signal);signal.throwIfAborted();view.contents.resizeCheck();view.expand();
+}
 export async function settleEpubGeometry(port:EpubReflowPort,signal:AbortSignal,anchor?:string):Promise<void>{
  return bounded(signal,async local=>{
-  const formatted=new WeakSet<LoadedViewPort>();
-  const formatNew=async()=>{if(port.manager.enqueue)await wait(port.manager.enqueue(async()=>{}),local);for(const view of port.views()){if(formatted.has(view))continue;local.throwIfAborted();await wait(view.layout.format(view.contents),local);view.contents.resizeCheck();view.expand();formatted.add(view);}if(anchor)port.alignAnchor?.(anchor);syncReadingScroll(port.manager);};
+  const formatted=new WeakMap<LoadedViewPort,string>();
+  const formatNew=async()=>{if(port.manager.enqueue)await wait(port.manager.enqueue(async()=>{}),local);for(const view of port.views()){const dimensions=JSON.stringify([view.layout.width,view.layout.height]);if(formatted.get(view)===dimensions)continue;local.throwIfAborted();await formatLoadedEpubView(view,local);formatted.set(view,dimensions);}if(anchor)port.alignAnchor?.(anchor);syncReadingScroll(port.manager);};
   await formatNew();let geometry=port.geometry();if(!geometry)throw new Error('EPUB has no visible geometry');
   await wait(updateReadingBuffer(port.manager,geometry),local);
   let previous='',stable=0;
@@ -41,7 +46,7 @@ export async function reflowAtCanonicalAnchor(port:EpubReflowPort,anchor:string,
  const geometry=port.geometry();if(geometry)port.manager.settings.offset=geometry.buffer;
 }
 /** A pinned IframeView can keep its identity while recycling its document/Contents. */
-export function mapLoadedView<T extends {contents:LoadedViewPort['contents']&{document:Document};layout:LoadedViewPort['layout'];expand():void;width():number;height():number}>(cache:WeakMap<T,LoadedViewPort>,view:T):LoadedViewPort{
+export function mapLoadedView<T extends {contents:LoadedViewPort['contents']&{document:Document};layout:LoadedViewPort['layout'];size?(width:number,height:number):void;expand():void;width():number;height():number}>(cache:WeakMap<T,LoadedViewPort>,view:T):LoadedViewPort{
  let mapped=cache.get(view);
- if(!mapped||mapped.document!==view.contents.document||mapped.contents!==view.contents||mapped.layout!==view.layout){mapped={document:view.contents.document,contents:view.contents,layout:view.layout,expand:()=>view.expand(),width:()=>view.width(),height:()=>view.height()};cache.set(view,mapped);}return mapped;
+ if(!mapped||mapped.document!==view.contents.document||mapped.contents!==view.contents||mapped.layout!==view.layout){mapped={document:view.contents.document,contents:view.contents,layout:view.layout,syncLayoutSize:()=>{const {width,height}=view.layout;if(typeof width==='number'&&typeof height==='number'&&Number.isFinite(width)&&Number.isFinite(height)&&width>0&&height>0)view.size?.(width,height);},expand:()=>view.expand(),width:()=>view.width(),height:()=>view.height()};cache.set(view,mapped);}return mapped;
 }

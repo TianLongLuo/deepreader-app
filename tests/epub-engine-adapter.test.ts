@@ -50,3 +50,24 @@ it('drains pending native lifetime decisions before formatting or relocating loa
  const {port,events}=fixture();port.manager.enqueue=async task=>{events.push('drain');return task();};
  await settleEpubGeometry(port,new AbortController().signal);expect(events[0]).toBe('drain');expect(events.lastIndexOf('drain')).toBeGreaterThan(events.lastIndexOf('frame'));
 });
+it('synchronizes the native iframe width lock with its wider or narrower layout before formatting',async()=>{
+ const {mapLoadedView}=await import('@/components/reader/epub-engine-adapter');
+ const {port,view,events}=fixture();view.settings.axis='vertical';view.settings.flow='scrolled-continuous';view.lockedWidth=1285;
+ const native=Object.assign(view,{contents:{...view.contents,document:view.document},layout:{...view.layout,width:1933,height:900},size:(w:number,h:number)=>{events.push('size');view.lockedWidth=w;view.lockedHeight=h;}});
+ const mapped=mapLoadedView(new WeakMap(),native);port.views=()=>[mapped];
+ await settleEpubGeometry(port,new AbortController().signal);
+ expect(view.width()).toBe(1933);expect(events.indexOf('size')).toBeLessThan(events.indexOf('format'));
+ native.layout.width=351;await settleEpubGeometry(port,new AbortController().signal);expect(view.width()).toBe(351);
+});
+it('reformats an already-loaded view when its mutable layout dimensions change during settling',async()=>{
+ const {mapLoadedView}=await import('@/components/reader/epub-engine-adapter');const {port,view,events}=fixture();view.settings.axis='vertical';view.settings.flow='scrolled-continuous';
+ const native=Object.assign(view,{contents:{...view.contents,document:view.document},layout:{...view.layout,width:1300,height:900},size:(w:number)=>{view.lockedWidth=w;}});
+ port.views=()=>[mapLoadedView(cache,native)];const cache=new WeakMap();let frames=0;port.nextFrame=async()=>{if(++frames===1)native.layout.width=1800;};
+ await settleEpubGeometry(port,new AbortController().signal);expect(view.width()).toBe(1800);expect(events.filter(e=>e==='format')).toHaveLength(2);
+});
+it('does not resize or expand a superseded view when asynchronous formatting finishes after cancellation',async()=>{
+ const {port,view,events}=fixture(),abort=new AbortController();let release!:()=>void;
+ view.layout.format=()=>new Promise<void>(resolve=>{release=resolve;});
+ const operation=settleEpubGeometry(port,abort.signal);await Promise.resolve();abort.abort();await expect(operation).rejects.toMatchObject({name:'AbortError'});
+ release();await Promise.resolve();await Promise.resolve();expect(events).not.toContain('resize');expect(events).not.toContain('expand');
+});

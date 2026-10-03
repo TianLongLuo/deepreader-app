@@ -220,7 +220,7 @@ type RenditionLike = {
   };
 };
 
-type EngineView=Omit<LoadedViewPort,'document'> & {contents:SessionContents & {resizeCheck():void};iframe?:HTMLIFrameElement};
+type EngineView=Omit<LoadedViewPort,'document'> & {contents:SessionContents & {resizeCheck():void};iframe?:HTMLIFrameElement;size(width:number,height:number):void};
 type PinnedEngine={started?:Promise<unknown>;manager?:Omit<ContinuousManagerPort,'check'|'update'> & {check?:ContinuousManagerPort['check'];update?:ContinuousManagerPort['update'];layout?:{delta?:number}};
  views():EngineView[]|{all():EngineView[]};reportLocation():unknown;
  on(name:string,fn:(value:unknown)=>void):void;off(name:string,fn:(value:unknown)=>void):void;

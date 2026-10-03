@@ -2,7 +2,7 @@ import {EpubCFI} from 'epubjs';
 import {createCanonicalCfiScope} from './scoped-cfi-adapter';
 import {createTextProjection,type TextProjection} from './text-projection';
 import {registerOriginalText} from './original-text';
-import {reflowAtCanonicalAnchor,type EpubReflowPort} from './epub-engine-adapter';
+import {formatLoadedEpubView,reflowAtCanonicalAnchor,type EpubReflowPort} from './epub-engine-adapter';
 import type {createReadingRestoreController,RestoreReason} from './reading-restore';
 import type {ReadingProgressSnapshot} from './progress-sync';
 export type SessionContents={document:Document;window:Window;cfiFromRange:(range:Range)=>string;cfiFromNode:(node:Node)=>string;addStylesheetCss:(css:string,key:string)=>void};
@@ -34,7 +34,7 @@ export function createEpubReadingSession(input:{runtime:SessionRuntime;restore:R
     // content hook resolves/rendered emits, then correct this new view's size.
     if(projections.get(doc)?.projection.epoch!==before){
      const view=runtime.port.views().find(v=>v.document===doc);
-     if(view){await view.layout.format(view.contents);view.contents.resizeCheck();view.expand();await runtime.port.nextFrame();}
+     if(view){await formatLoadedEpubView(view,lifetime.signal);await runtime.port.nextFrame();}
     }
    }catch(error){if(active()){restore.fail(gen,error);input.onPhase();}}
    finally{rebinding--;if(active())input.onPhase();}
