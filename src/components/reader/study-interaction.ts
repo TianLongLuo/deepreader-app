@@ -1,3 +1,5 @@
+import {collectMeaningSources,sourceRange} from './meaning-text-source';
+import {projectionFor,projectedRanges} from './original-text';
 export type StudyLanguage = 'en' | 'es' | 'bilingual';
 export function getStudyLanguage(source: 'en'|'es', preferences: Partial<Record<'en'|'es', unknown>>): StudyLanguage {
  const value = preferences[source];
@@ -18,13 +20,17 @@ export function wordAtPoint(doc: Document, x: number, y: number, within: Element
  const node=pos?.offsetNode??caret?.startContainer;
  let offset=pos?.offset??caret?.startOffset;
  if(!node||node.nodeType!==3||offset===undefined||!within.contains(node))return null;
- const text=node.textContent||'';
- // Caret APIs return the nearest insertion point, including the end of a word.
- const hit=wordSpanAtOffset(text,offset) || wordSpanAtOffset(text,offset-1);
- if(!hit)return null;
- const range=doc.createRange();range.setStart(node,hit.start);range.setEnd(node,hit.end);
- const rect=Array.from(range.getClientRects()).find(r=>x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom);
- return rect?{...hit,range,rect}:null;
+ const point=projectionFor(node)?.originalPoint({node,offset},'before')??{node,offset};
+ for(const source of collectMeaningSources(within)){
+  let index=source.points.findIndex(p=>p.node===point.node&&p.offset===point.offset);
+  if(index<0){const end=source.ends.findIndex(p=>p.node===point.node&&p.offset===point.offset);if(end>=0)index=end+1;}
+  if(index<0)continue;
+  // Caret APIs return the nearest insertion point; geometry still must contain the click.
+  const hit=wordSpanAtOffset(source.text,index)||wordSpanAtOffset(source.text,index-1);if(!hit)continue;
+  const originalRange=sourceRange(source,hit.start,hit.end),ranges=projectedRanges(originalRange);
+  for(const range of ranges){const rect=Array.from(range.getClientRects()).find(r=>x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom);if(rect)return {...hit,source,originalRange,range,rect};}
+ }
+ return null;
 }
 export function highlightWord(doc: Document, range?: Range) {
  const win=doc.defaultView as (Window & {CSS?:{highlights?:Map<string,unknown>};Highlight?:new (...ranges:Range[])=>unknown})|null;

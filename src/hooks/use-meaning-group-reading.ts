@@ -2,106 +2,108 @@
 import {useEffect,useRef,useState,type RefObject} from 'react';
 import {validateMeaningGroupResult,validateMeaningGroupPrefix,type MeaningGroupResult} from '@/lib/meaning-groups';
 import {createMeaningGroupQueue,meaningRetryAfterMs,type MeaningGroupStatus} from '@/components/reader/meaning-group-queue';
-import {clearMeaningHighlights,paintMeaningHighlights,supportsMeaningHighlights,sameMeaningElements} from '@/components/reader/meaning-group-highlights';
-import {collectMeaningSources,observeMeaningSources,sourceRange,type MeaningTextSource} from '@/components/reader/meaning-text-source';
+import {clearMeaningHighlights,paintMeaningHighlights,supportsMeaningHighlights} from '@/components/reader/meaning-group-highlights';
+import {collectMeaningSources,sourceRange,type MeaningTextSource} from '@/components/reader/meaning-text-source';
 import {consumeAIStream,AIStreamError} from '@/lib/ai-stream';
 import {createProcessedExposureQueue} from '@/lib/processed-exposures';
 import {splitMeaningText} from '@/lib/meaning-group-units';
-const empty:MeaningGroupStatus={pending:0,ready:0,failed:0,blocked:false,deferred:0,retryAt:null};
-export function useMeaningGroupReading({root,documentId,userId,language,enabled,theme,lowSaturation=false,locationFor}:{root:RefObject<HTMLDivElement|null>;documentId:string;userId:string;language:'en'|'es';enabled:boolean;theme:'light'|'dark'|'sepia';lowSaturation?:boolean;locationFor?:(source:MeaningTextSource,range:Range)=>string|null}){
+import {projectionFor,projectedRanges} from '@/components/reader/original-text';
+import type {TextProjection} from '@/components/reader/text-projection';
+import type {createReaderAIClientBudget} from '@/components/reader/reader-ai-budget';
+import {createMeaningResultCache} from '@/components/reader/meaning-result-cache';
+import {partitionMeaningWindow,intersectsReadingRect,type MeaningUnitRef} from '@/components/reader/meaning-window';
+import type {ReadingFlow,ReadingWindowGeometry,ViewportRect} from '@/components/reader/reading-flow';
+const empty:MeaningGroupStatus={pending:0,ready:0,failed:0,blocked:false,deferred:0,retryAt:null,prefetchPending:0,prefetchReady:0,pauseReason:null};
+type Input={root:RefObject<HTMLDivElement|null>;documentId:string;userId:string;language:'en'|'es';enabled:boolean;ready:boolean;flow:ReadingFlow;theme:'light'|'dark'|'sepia';lowSaturation?:boolean;aiEpoch:string;budget:ReturnType<typeof createReaderAIClientBudget>;geometry:()=>ReadingWindowGeometry|null;subscribeGeometry:(refresh:()=>void)=>()=>void;locationFor?:(source:MeaningTextSource,range:Range)=>string|null};
+type Unit={source:MeaningTextSource;range:Range;unit:MeaningUnitRef;doc:Document};
+export function useMeaningGroupReading(input:Input){
+ const current=useRef(input);current.current=input;
  const [state,setState]=useState({...empty,unsupported:false,skipped:0});
- const cacheRef=useRef({scope:'',values:new Map<string,MeaningGroupResult>()});
- const retryRef=useRef(()=>{});
+ const scope=JSON.stringify([input.userId,input.documentId,input.language,'sense-groups-v3-repair','offset-result-v1',input.aiEpoch]);
+ const cacheRef=useRef({scope:'',values:createMeaningResultCache()});
+ const controls=useRef({refresh:()=>{},retry:()=>{}});
  useEffect(()=>{
-  const scope=[userId,documentId,language].join(':');
-  if(cacheRef.current.scope!==scope)cacheRef.current={scope,values:new Map()};
-  if(!enabled){setState({...empty,unsupported:false,skipped:0});return;}
-  const container=root.current;if(!container)return;
-  let disposed=false,raf=0,dirty=true,lastSignature='';let lastElements:HTMLElement[]=[];
-  const docs=new Map<Document,{root:Element;observer:MutationObserver}>();
-  const sourceCache=new Map<Element,MeaningTextSource[]>();
-  const unitCache=new Map<MeaningTextSource,Array<{text:string;start:number;end:number;range:Range}>|null>();
-  const observe=(doc:Document,within:Element)=>{
-   if(docs.get(doc)?.root===within)return;
-   docs.get(doc)?.observer.disconnect();
-   const observer=observeMeaningSources(within,()=>{dirty=true;sourceCache.clear();unitCache.clear();});
-   docs.set(doc,{root:within,observer});
-  };
-  const notify=()=>{if(!disposed&&!raf)raf=window.requestAnimationFrame(()=>{raf=0;refresh();});};
-  const locationCache=new WeakMap<Range,string|null>();
-  const exposures=createProcessedExposureQueue(async(units,signal)=>{const response=await fetch('/api/study/exposures',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({documentId,sourceLanguage:language,units})});if(!response.ok)throw new Error('Exposure recording failed');});
-  const prefixes=new Map<string,MeaningGroupResult>();
-  const queue=createMeaningGroupQueue(async(text,signal)=>{
-   prefixes.delete(text);
+  if(cacheRef.current.scope!==scope)cacheRef.current={scope,values:createMeaningResultCache()};
+  const mounted=input.root.current;if(!mounted)return;const container:HTMLDivElement=mounted;
+  let disposed=false,raf=0,dirty=true,lastSignature='',direction:1|-1=1;
+  let previous:{id:string;coordinate:number}|undefined,sourceId=0;
+  const ids=new WeakMap<Element,number>(),sourceCache=new Map<Element,MeaningTextSource[]>(),unitCache=new WeakMap<MeaningTextSource,Unit[]|null>();
+  type Watched={root:Element;observer:MutationObserver;projection?:TextProjection;projectionOff?:()=>void;off:()=>void};
+  const docs=new Map<Document,Watched>(),prefixes=new Map<string,{owner:symbol;value?:MeaningGroupResult}>();
+  const key=(text:string)=>scope+'\0'+text;
+  const active=()=>current.current.enabled&&current.current.ready&&container.ownerDocument.visibilityState!=='hidden'&&navigator.onLine!==false;
+  const notify=()=>{dirty=true;if(!disposed&&!raf)raf=window.requestAnimationFrame(()=>{raf=0;refresh();});};
+  const exposures=createProcessedExposureQueue(async(units,signal)=>{const response=await fetch('/api/study/exposures',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({documentId:input.documentId,sourceLanguage:input.language,units})});if(!response.ok)throw new Error('Exposure recording failed');});
+  const queue=createMeaningGroupQueue({budget:input.budget,cache:cacheRef.current.values,changed:notify,request:async(text,signal)=>{
+   const owner=Symbol(),id=key(text);prefixes.set(id,{owner});
    try{
-    const response=await fetch('/api/meaning-groups',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},signal,body:JSON.stringify({documentId,sourceLanguage:language,text})});
-    if(!response.ok)throw Object.assign(new Error('Meaning group request failed'),{status:response.status,retryAfterMs:meaningRetryAfterMs(response.headers.get('Retry-After'))});
+    const response=await fetch('/api/meaning-groups',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},signal,body:JSON.stringify({documentId:input.documentId,sourceLanguage:input.language,text})});
+    if(!response.ok)throw Object.assign(new Error('Meaning request failed'),{status:response.status,retryAfterMs:meaningRetryAfterMs(response.headers.get('Retry-After'))});
     const value=await consumeAIStream<MeaningGroupResult>(response,signal,event=>{
-     if(!signal.aborted&&event.type==='unit'){
-      const prefix=validateMeaningGroupPrefix(text,event.value);
-      if(event.index!==prefix.groups.length-1)throw new AIStreamError('INVALID_OUTPUT','');
-      prefixes.set(text,prefix);dirty=true;notify();
+     if(!signal.aborted&&prefixes.get(id)?.owner===owner&&event.type==='unit'){
+      const prefix=validateMeaningGroupPrefix(text,event.value);if(event.index!==prefix.groups.length-1)throw new AIStreamError('INVALID_OUTPUT','');prefixes.set(id,{owner,value:prefix});notify();
      }
-    });
-    signal.throwIfAborted();prefixes.delete(text);dirty=true;
-    return validateMeaningGroupResult(text,value);
+    });signal.throwIfAborted();return validateMeaningGroupResult(text,value);
    }catch(error){
-    prefixes.delete(text);dirty=true;notify();
     if(error instanceof AIStreamError&&error.code==='RATE_LIMITED')throw Object.assign(error,{status:429});
-    if(error instanceof AIStreamError&&['UNAVAILABLE','STREAM_UNSUPPORTED'].includes(error.code))throw Object.assign(error,{status:503});
-    throw error;
+    if(error instanceof AIStreamError&&['UNAVAILABLE','STREAM_UNSUPPORTED'].includes(error.code))throw Object.assign(error,{status:503});throw error;
+   }finally{if(prefixes.get(id)?.owner===owner)prefixes.delete(id);notify();}
+  }});
+  function watch(doc:Document,within:Element){
+   let watched=docs.get(doc);
+   if(watched?.root!==within){
+    if(watched){watched.observer.disconnect();watched.off();watched.projectionOff?.();}
+    const observer=new doc.defaultView!.MutationObserver(records=>{
+     if(records.some(record=>!(record.type==='characterData'&&projectionFor(record.target))))sourceCache.delete(within);
+     notify();
+    });observer.observe(within,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden','aria-hidden','class','style','role','epub:type']});
+    doc.addEventListener('scroll',notify,true);doc.defaultView!.addEventListener('resize',notify);doc.defaultView!.addEventListener('load',notify);
+    watched={root:within,observer,off:()=>{doc.removeEventListener('scroll',notify,true);doc.defaultView?.removeEventListener('resize',notify);doc.defaultView?.removeEventListener('load',notify);}};docs.set(doc,watched);
    }
-  },notify,cacheRef.current.values);
-  retryRef.current=()=>{queue.retry();};
-  const intersect=(a:{left:number;right:number;top:number;bottom:number},b:{left:number;right:number;top:number;bottom:number})=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;
-  const refresh=()=>{
+   const projection=projectionFor(within);
+   if(projection!==watched.projection){watched.projectionOff?.();watched.projection=projection;watched.projectionOff=projection?.subscribe(notify);sourceCache.delete(within);}
+  }
+  function refresh(){
    if(disposed)return;
-   const body=container.querySelector<HTMLElement>('[data-reading-body]');if(!body)return;
-   const frame=body.getBoundingClientRect(),outer={left:Math.max(0,frame.left),top:Math.max(0,frame.top),right:Math.min(window.innerWidth,frame.right),bottom:Math.min(window.innerHeight,frame.bottom)};
-   const sources:Array<{doc:Document;within:Element;offset:{left:number;top:number};clip:typeof outer}>=[];
-   if(body.querySelector('[data-pdf-selection-key]'))sources.push({doc:container.ownerDocument,within:body,offset:{left:0,top:0},clip:outer});
-   for(const iframe of body.querySelectorAll('iframe')){
-    try{const doc=iframe.contentDocument;if(!doc?.body)continue;const r=iframe.getBoundingClientRect();if(!intersect(r,outer))continue;sources.push({doc,within:doc.body,offset:{left:r.left,top:r.top},clip:{left:Math.max(outer.left,r.left),right:Math.min(outer.right,r.right),top:Math.max(outer.top,r.top),bottom:Math.min(outer.bottom,r.bottom)}});}catch{/* Ignore non-book/cross-origin frames. */}
-   }
-   const liveDocs=new Set(sources.map(s=>s.doc));
-   for(const [doc,watched] of docs)if(!liveDocs.has(doc)){watched.observer.disconnect();clearMeaningHighlights(doc);docs.delete(doc);sourceCache.clear();unitCache.clear();dirty=true;}
-   const visible:Array<{source:MeaningTextSource;text:string;offset:number;doc:Document;location:string|null}>=[];let unsupported=false,skipped=0;
-   for(const frameSource of sources){
-    observe(frameSource.doc,frameSource.within);
-    let passages=sourceCache.get(frameSource.within);
-    if(!passages){passages=collectMeaningSources(frameSource.within);sourceCache.set(frameSource.within,passages);}
-    for(const passage of passages){
-     let units=unitCache.get(passage);
-     if(units===undefined){try{units=splitMeaningText(passage.text,1200,language).map(unit=>({...unit,range:sourceRange(passage,unit.start,unit.end)}));}catch{units=null;}unitCache.set(passage,units);}
+   const on=active();queue.setSuspended(!on);exposures.setSuspended(!on);
+   if(!on){if(!current.current.enabled){for(const doc of docs.keys())clearMeaningHighlights(doc);setState(old=>JSON.stringify(old)===JSON.stringify({...empty,unsupported:false,skipped:0})?old:{...empty,unsupported:false,skipped:0});}return;}
+   const body=container.querySelector<HTMLElement>('[data-reading-body]'),g=current.current.geometry();if(!body||!g)return;
+   const roots:Array<{doc:Document;within:Element;offset:{left:number;top:number};bounds?:ViewportRect}>=[];
+   if(body.querySelector('[data-pdf-selection-key]'))roots.push({doc:container.ownerDocument,within:body,offset:{left:0,top:0}});
+   for(const iframe of body.querySelectorAll('iframe'))try{const doc=iframe.contentDocument,r=iframe.getBoundingClientRect();if(doc?.body&&r.right>r.left&&r.bottom>r.top&&intersectsReadingRect(r,g.neighborhood))roots.push({doc,within:doc.body,offset:{left:r.left,top:r.top},bounds:r});}catch{/* Non-book frames are not analysis sources. */}
+   const live=new Set(roots.map(r=>r.doc));for(const [doc,watched] of docs)if(!live.has(doc)){watched.observer.disconnect();watched.off();watched.projectionOff?.();sourceCache.delete(watched.root);clearMeaningHighlights(doc);docs.delete(doc);dirty=true;}
+   const candidates:Array<{unit:MeaningUnitRef;rects:ViewportRect[]}>=[],entries=new Map<string,Unit>();let unsupported=false,skipped=0;
+   for(const frame of roots){
+    watch(frame.doc,frame.within);let passages=sourceCache.get(frame.within);if(!passages){passages=collectMeaningSources(frame.within);sourceCache.set(frame.within,passages);}
+    for(const source of passages){
+     let units=unitCache.get(source);
+     if(units===undefined){try{if(!ids.has(source.element))ids.set(source.element,sourceId++);units=splitMeaningText(source.text,1200,input.language).map(u=>{const range=sourceRange(source,u.start,u.end);return {source,range,doc:frame.doc,unit:{key:key(u.text),text:u.text,sourceId:`${ids.get(source.element)}:${u.start}`,location:current.current.locationFor?.(source,range)??null,start:u.start,end:u.end}};});}catch{units=null;}unitCache.set(source,units);}
      if(!units){skipped++;continue;}
-     const scroll=passage.element.closest('[data-pdf-text-scroll]')?.getBoundingClientRect();
-     for(const unit of units){
-      const range=unit.range;
-      // A spanning paragraph box can cross pages; only actual text rectangles count.
-      const onScreen=Array.from(range.getClientRects()).some(r=>r.width>0&&r.height>0&&intersect({left:r.left+frameSource.offset.left,right:r.right+frameSource.offset.left,top:r.top+frameSource.offset.top,bottom:r.bottom+frameSource.offset.top},frameSource.clip)&&(!scroll||intersect(r,scroll)));
-      if(!onScreen)continue;
-      if(!supportsMeaningHighlights(frameSource.doc)){unsupported=true;continue;}
-      if(!locationCache.has(range))locationCache.set(range,locationFor?.(passage,range)??null);
-      visible.push({source:passage,text:unit.text,offset:unit.start,doc:frameSource.doc,location:locationCache.get(range)??null});
+     for(const entry of units){
+      const rects=projectedRanges(entry.range).flatMap(range=>Array.from(range.getClientRects())).filter(r=>r.width>0&&r.height>0).map(r=>({left:r.left+frame.offset.left,right:r.right+frame.offset.left,top:r.top+frame.offset.top,bottom:r.bottom+frame.offset.top})).filter(r=>!frame.bounds||intersectsReadingRect(r,frame.bounds));
+      if(!rects.some(r=>intersectsReadingRect(r,g.neighborhood)))continue;
+      if(!supportsMeaningHighlights(frame.doc)){unsupported=true;continue;}
+      candidates.push({unit:entry.unit,rects});entries.set(entry.unit.sourceId,entry);
      }
     }
    }
-   // Queue at most the visible passage, not every paragraph in a loaded chapter.
-   queue.setVisible(visible.map(v=>v.text));
-   // Record only a validated completed unit, including cache hits at new source positions.
-   for(const item of visible)if(item.location&&queue.get(item.text))exposures.add({location:item.location,sourceText:item.text});
-   const status=queue.status();
-   const signature=JSON.stringify(visible.map(v=>[v.text,Boolean(queue.get(v.text))]));
-   const elements=visible.map(v=>v.source.element);
-   if(dirty||signature!==lastSignature||!sameMeaningElements(elements,lastElements)){
-    for(const doc of docs.keys())paintMeaningHighlights(doc,visible.flatMap(v=>{const result=queue.get(v.text)??prefixes.get(v.text);return v.doc===doc&&result?[{source:v.source,result,offset:v.offset}]:[];}),theme,lowSaturation);
-    dirty=false;lastSignature=signature;lastElements=elements;
+   if(previous){const candidate=candidates.find(c=>c.unit.sourceId===previous!.id),coordinate=candidate?.rects[0]?.[g.axis==='horizontal'?'left':'top'];if(coordinate!==undefined&&Math.abs(coordinate-previous.coordinate)>1)direction=coordinate<previous.coordinate?1:-1;}
+   const w=partitionMeaningWindow(candidates,g,direction),first=w.visible[0];if(first){const candidate=candidates.find(c=>c.unit.sourceId===first.sourceId)!;previous={id:first.sourceId,coordinate:candidate.rects[0][g.axis==='horizontal'?'left':'top']};}
+   queue.setWindow(w);
+   for(const unit of w.visible)if(unit.location&&queue.get(unit.key))exposures.add({location:unit.location,sourceText:unit.text});
+   const all=[...w.visible,...w.neighborhood.map(n=>n.unit)],signature=JSON.stringify(all.map(u=>[u.sourceId,u.key,Boolean(queue.get(u.key)),prefixes.get(u.key)?.value?.groups.length??0]));
+   if(dirty||signature!==lastSignature){
+    for(const doc of docs.keys())paintMeaningHighlights(doc,all.flatMap(unit=>{const entry=entries.get(unit.sourceId),result=queue.get(unit.key)??prefixes.get(unit.key)?.value;return entry?.doc===doc&&result?[{source:entry.source,result,offset:unit.start}]:[];}),current.current.theme,current.current.lowSaturation);
+    dirty=false;lastSignature=signature;
    }
-   const next={...status,unsupported,skipped};setState(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
-  };
-  refresh();
-  const timer=window.setInterval(refresh,400);
-  return()=>{disposed=true;window.clearInterval(timer);window.cancelAnimationFrame(raf);queue.dispose();exposures.dispose();retryRef.current=()=>{};for(const [doc,watched] of docs){watched.observer.disconnect();clearMeaningHighlights(doc);}};
- },[root,documentId,userId,language,enabled,theme,lowSaturation,locationFor]);
- return {...state,retry:()=>retryRef.current()};
+   const next={...queue.status(),unsupported,skipped};setState(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
+  }
+  controls.current={refresh:()=>{dirty=true;refresh();},retry:()=>queue.retry()};
+  const unsubscribe=input.subscribeGeometry(notify);
+  container.addEventListener('scroll',notify,true);container.addEventListener('load',notify,true);window.addEventListener('resize',notify);window.addEventListener('online',notify);window.addEventListener('offline',notify);container.ownerDocument.addEventListener('visibilitychange',notify);
+  refresh();const timer=window.setInterval(refresh,400);
+  return()=>{disposed=true;window.clearInterval(timer);window.cancelAnimationFrame(raf);unsubscribe();container.removeEventListener('scroll',notify,true);container.removeEventListener('load',notify,true);window.removeEventListener('resize',notify);window.removeEventListener('online',notify);window.removeEventListener('offline',notify);container.ownerDocument.removeEventListener('visibilitychange',notify);queue.dispose();exposures.dispose();controls.current={refresh:()=>{},retry:()=>{}};for(const [doc,watched] of docs){watched.observer.disconnect();watched.off();watched.projectionOff?.();clearMeaningHighlights(doc);}};
+ },[scope,input.root,input.budget]);
+ useEffect(()=>controls.current.refresh(),[input.enabled,input.ready,input.flow,input.theme,input.lowSaturation]);
+ return {...state,retry:()=>controls.current.retry()};
 }

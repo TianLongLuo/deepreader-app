@@ -33,3 +33,24 @@ it.each([
 ])('never treats an optional-verb fallback as permission to omit, invent or split source words',output=>{
  expect(()=>alignGeneratedMeaning('The engine started.',output,true)).toThrow();
 });
+
+import {createTextProjection} from '@/components/reader/text-projection';
+import {registerOriginalText} from '@/components/reader/original-text';
+import {sourceRange} from '@/components/reader/meaning-text-source';
+import {paintMeaningHighlights} from '@/components/reader/meaning-group-highlights';
+it.each(['light','dark','sepia'] as const)('paints complete translated verb and group ranges in %s',theme=>{
+ const doc=new JSDOM('<p>She waited. Then left.</p>').window.document,win=doc.defaultView!;
+ const registry=new Map<string,unknown>();
+ class Highlight {priority=0;constructor(public readonly ranges:Range[]){} }
+ const Capture=class extends Highlight{constructor(...ranges:Range[]){super(ranges);}};
+ Object.defineProperty(win,'CSS',{value:{highlights:registry}});Object.defineProperty(win,'Highlight',{value:Capture});
+ const p=createTextProjection(doc.documentElement),off=registerOriginalText(p);
+ try{
+  const s=collectMeaningSources(doc.body)[0];p.apply({id:'v',originalRange:sourceRange(s,4,10),replacement:'was standing by'});
+  const result=alignGeneratedMeaning(s.text,{groups:[{text:'She waited.',verbs:['waited']},{text:'Then left.',verbs:['left']}]},true);
+  paintMeaningHighlights(doc,[{source:s,result,offset:0}],theme);
+  expect((registry.get('reader-meaning-verb') as Highlight).ranges.map(r=>r.toString())).toEqual(['was standing by','left']);
+  expect((registry.get('reader-meaning-0') as Highlight).ranges[0].toString()).toBe('She was standing by.');
+  expect((registry.get('reader-meaning-1') as Highlight).ranges[0].toString()).toBe('Then left.');
+ }finally{off();p.dispose();}
+});

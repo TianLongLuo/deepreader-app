@@ -11,3 +11,7 @@ it('starts hidden even for existing expanded preferences and reserves no reading
 it('provides a top-edge hover target and accessible touch/keyboard restore control',()=>{
  const html=render();expect(html).toContain('data-toolbar-hover-zone');expect(html).toContain('展开阅读工具栏');expect(html).toContain('aria-expanded="false"');
 });
+it('labels vertical navigation as screens rather than pages',()=>{
+ const html=renderToStaticMarkup(createElement(ReaderToolbar,{title:'Fixture',onPrevious:noop,onNext:noop,onBookmark:noop,onContents:noop,onFullscreen:noop,immersive:false,navigationKind:'screen'}));
+ expect(html).toContain('aria-label="上一屏"');expect(html).toContain('aria-label="下一屏"');expect(html).not.toContain('aria-label="翻页"');
+});

@@ -8,6 +8,7 @@ import { ChevronUp, ChevronDown, BookmarkPlus, ChevronLeft, ChevronRight, List, 
 
 export type ReaderToolbarProps = {
   title: string;
+  navigationKind?:'page'|'screen';
   onUtility?:(tab:string)=>void;
   positionLabel?: string;
   onPrevious: () => void;
@@ -26,6 +27,7 @@ const controlClass = 'inline-flex min-h-10 shrink-0 items-center justify-center 
 
 export default function ReaderToolbar({
   title,
+  navigationKind='page',
   onUtility,
   positionLabel,
   onPrevious,
@@ -87,18 +89,18 @@ export default function ReaderToolbar({
         <h1 className="min-w-0 basis-full truncate text-sm font-semibold sm:basis-auto sm:flex-1" title={title}>
           {title}
         </h1>
-        <div role="group" aria-label="翻页" className="flex min-w-0 flex-wrap items-center gap-2">
-          <button type="button" className={controlClass} aria-label="上一页" disabled={previousDisabled} onClick={onPrevious}>
+        <div role="group" aria-label={navigationKind==='screen'?'逐屏阅读':'翻页'} className="flex min-w-0 flex-wrap items-center gap-2">
+          <button type="button" className={controlClass} aria-label={navigationKind==='screen'?'上一屏':'上一页'} disabled={previousDisabled} onClick={onPrevious}>
             <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-            <span className="hidden sm:inline">上一页</span>
+            <span className="hidden sm:inline">{navigationKind==='screen'?'上一屏':'上一页'}</span>
           </button>
           {positionLabel && (
             <span aria-live="polite" aria-atomic="true" className="max-w-40 truncate text-center text-xs tabular-nums opacity-75" title={positionLabel}>
               {positionLabel}
             </span>
           )}
-          <button type="button" className={controlClass} aria-label="下一页" disabled={nextDisabled} onClick={onNext}>
-            <span className="hidden sm:inline">下一页</span>
+          <button type="button" className={controlClass} aria-label={navigationKind==='screen'?'下一屏':'下一页'} disabled={nextDisabled} onClick={onNext}>
+            <span className="hidden sm:inline">{navigationKind==='screen'?'下一屏':'下一页'}</span>
             <ChevronRight aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>

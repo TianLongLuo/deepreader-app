@@ -1,0 +1,31 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {JSDOM} from 'jsdom';
+import {EpubCFI} from 'epubjs';
+import {occurrenceId,originalWordAtPoint,findEpubSourceElement} from '@/components/reader/source-position';
+import {createTextProjection} from '@/components/reader/text-projection';
+import {registerOriginalText} from '@/components/reader/original-text';
+import {collectMeaningSources,sourceRange} from '@/components/reader/meaning-text-source';
+const cleanup:Array<()=>void>=[];afterEach(()=>{cleanup.splice(0).reverse().forEach(fn=>fn());vi.unstubAllGlobals();});
+it('hits cross-inline words and any part of a translated atom without global text lookup',()=>{
+ const win=new JSDOM('<p>re<em>-en</em>ter re-enter.</p>').window,doc=win.document;
+ Object.defineProperty(win.Range.prototype,'getClientRects',{value:()=>[{left:0,right:200,top:0,bottom:20,width:200,height:20}]});
+ const p=createTextProjection(doc.documentElement);cleanup.push(()=>p.dispose(),registerOriginalText(p));
+ let node:Node=doc.querySelector('em')!.firstChild!,offset=1;
+ Object.defineProperty(doc,'caretPositionFromPoint',{value:()=>({offsetNode:node,offset})});
+ const locate=(_source:unknown,r:Range)=>{const prefix=r.cloneRange();prefix.selectNodeContents(r.startContainer.parentElement!.closest('p')!);prefix.setEnd(r.startContainer,r.startOffset);return {kind:'pdf' as const,selectionKey:'p',start:prefix.toString().length,end:prefix.toString().length+r.toString().length};};
+ const input={document:doc,x:20,y:10,locate};
+ const first=originalWordAtPoint(input)!;expect(first.word).toBe('re-enter');
+ p.apply({id:first.id,originalRange:first.originalRange,replacement:'enter once more'});
+ node=doc.querySelector('p')!.firstChild!;offset=12;
+ expect(originalWordAtPoint(input)?.id).toBe(first.id);
+ node=doc.querySelector('p')!.lastChild!;offset=4;
+ const second=originalWordAtPoint(input)!;expect(second.word).toBe('re-enter');expect(second.id).not.toBe(first.id);
+ expect(occurrenceId(first.position)).toBe(first.id);
+});
+it('finds the exact EPUB paragraph in the matching spine, not the first identical text',()=>{
+ const docs=[new JSDOM('<p>same</p><p>same</p>').window.document,new JSDOM('<p>same</p><p>same</p>').window.document];
+ vi.stubGlobal('XPathResult',docs[0].defaultView!.XPathResult);
+ const contents=docs.map((document,i)=>({document,cfiFromRange:(r:Range)=>new EpubCFI(r,`/6/${(i+1)*2}[ch${i}]`).toString()}));
+ const r=docs[1].createRange();r.selectNodeContents(docs[1].querySelectorAll('p')[1]);
+ expect(findEpubSourceElement(contents,contents[1].cfiFromRange(r))).toBe(docs[1].querySelectorAll('p')[1]);
+});

@@ -1,5 +1,6 @@
 'use client';
 
+import {signalReadingAISettingsChanged} from '@/lib/reading-ai-epoch';
 import { useState, useEffect } from 'react';
 import { useDraft } from '@/hooks/use-draft';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -7,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AIProviderSettings } from '@/types/ai';
 
-export default function AISettingsForm({ initialData }: { initialData: any }) {
+export default function AISettingsForm({ initialData,userId }: { initialData: any;userId:string }) {
   const [saveError,setSaveError]=useState('');
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -100,7 +101,9 @@ export default function AISettingsForm({ initialData }: { initialData: any }) {
       if (!res.ok) throw new Error(data.error);
 
       // Update local storage but drop the apiKey since it's saved
-      updateDraft({ ...draft, apiKey: '', maskedApiKeyPreview: data.maskedApiKeyPreview });
+      // The server save succeeded; blocked draft storage must not misreport it as failure.
+      try{updateDraft({ ...draft, apiKey: '', maskedApiKeyPreview: data.maskedApiKeyPreview });}catch{}
+      signalReadingAISettingsChanged(userId);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {

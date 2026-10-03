@@ -157,3 +157,29 @@ sudo journalctl -u deepreader-worker.service -n 30 --no-pager
 ## 本次实际发布（2026-10-02）
 
 已部署 `79d9ac3ed42370bf18d82c05d88c9fd1d6c93328`。本应用主进程与后台整理进程均 active，HTTPS／鉴权／真实流式／收藏整理／FSRS／练习验收通过。备份目录：`/opt/deepreader-app-backups/20261002-110236-learning-79d9ac3/`。原环境、AI 配置、Nginx、原服务文件及书籍校验一致；没有安装系统包。详细时序、数据保留与已知限制见 `docs/qa/2026-10-01-learning-workbench.md`。之后只更新验收文档的提交不需要重新构建运行代码。
+
+## 本次阅读模式升级（无数据库迁移）
+
+- 阅读方式：横向分页 / 原生纵向连续滚动（EPUB 可重排书籍）。切换保留原文 CFI 定位；固定版式 EPUB 不切换纵向，PDF 使用文本纵向阅读。
+- 意群：自动维护当前视口及前后两屏，跨页/滚动继续处理。完成结果缓存和未完成排队分离；共享最多两次并发，纯预取最多一个、每分钟最多八次。后台/离线/恢复位置时暂停。
+- 语义翻牌：默认关闭，英/西语原文可以选英/中/西语；同语为简明同义表达。只换当前点击的一次词，再点恢复。与意群共用但关闭旧查词/句子结构弹窗；复制、书签、笔记与上下文仍为原文。
+- `Alt+Enter`：一个原词翻牌，选中整个翻牌结果则恢复；跨词不处理。`Escape`：取消待处理或恢复最近一次。偏好按账号保存；重新进入书籍不自动重放付费翻牌。
+- 限流只作有限退避，配置错误暂停；显示“重试”后由用户明确重试，不无限调用。服务端同时有账号/工作区额度、短响应校验、最多一次格式修复和总时限。模型若未给出可靠短答案，原词保留。
+
+### 现有腾讯云实例的专用发布
+
+新脚本 `scripts/deploy/deepreader-reader-release.sh` **只适用于现有 `/opt/deepreader-app` 和 `deepreader.service`，不是首次部署安装器**。此升级不要运行旧 learning 发布/迁移脚本。
+
+发布前完成 `docs/reader-modes-acceptance.md` 的真实浏览器、生产 bundle、真实提供商合成语义门槛及独立分支审查。精确记录线上 `OLD` 和 GitHub `main` 的 `NEW`（完整 40 位）；先确认无未提交变更。运行：
+
+```bash
+sudo bash scripts/deploy/deepreader-reader-release.sh NEW_SHA EXPECTED_OLD_SHA
+```
+
+实际部署可从已核对 `NEW` 的 Git 对象导出脚本到权限 700 的项目备份目录，校验独立 SHA256 后运行，避免为了取得脚本先变更线上 HEAD。脚本只接受 GitHub main 快进、原依赖/锁文件/Prisma schema 完全不变；校验应用 owner、Node22、service 路径、磁盘空间。
+
+备份包含旧构建、权限限制的环境文件副本、**包含 WAL 的一致 SQLite 快照**、配置及上传文件校验清单。只停止/启动 web；worker、SSH、Nginx、密钥、系统防火墙与其它站点不修改。构建在独立临时 systemd 单元下限内存 1800M、Swap512M、CPU100%，不安装或更新系统依赖。
+
+失败自动恢复旧代码和旧 `.next`，启动 web，保留原始失败状态并报告回滚二次失败。**不会把备份数据库覆盖回线上，也不恢复/覆盖用户上传**。构建失败期间 worker 的新写入仍保留；SQLite 快照仅供单独人工灾难恢复。成功必须含 `__READER_MODES_RELEASE_SUCCESS__`，并检查 HTTPS 登录200、新/旧保护 API401、新静态资源200、web稳定、worker原状态、数据库 quick/FK及原配置校验。
+
+Chrome OrcaTerm 操作只在用户明确选中的终端标签进行。完成后关闭 View → Developer → Allow JavaScript from Apple Events；此开关状态要实际确认或由用户关闭，不默认声称已关闭。

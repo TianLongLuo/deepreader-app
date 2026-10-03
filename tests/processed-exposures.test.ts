@@ -12,3 +12,6 @@ it('bounds a recording batch to eight units, retries at most three times and can
  for(let i=0;i<8;i++)queue.add({location:'epubcfi(/'+i+')',sourceText:'A word.'});await vi.advanceTimersByTimeAsync(20100);expect(send).toHaveBeenCalledTimes(3);await vi.advanceTimersByTimeAsync(100000);expect(send).toHaveBeenCalledTimes(3);
  queue.add({location:'epubcfi(/later)',sourceText:'Later.'});queue.dispose();await vi.advanceTimersByTimeAsync(1000);expect(send).toHaveBeenCalledTimes(3);expect(send.mock.calls[0][1].aborted).toBe(true);
 });
+it('suspends pending exposure during restore and resumes the same canonical evidence without re-adding',async()=>{
+ vi.useFakeTimers();const send=vi.fn(async()=>{}),q=createProcessedExposureQueue(send);q.add({location:'canonical',sourceText:'Source word.'});q.setSuspended(true);await vi.advanceTimersByTimeAsync(500);expect(send).not.toHaveBeenCalled();q.setSuspended(false);await vi.advanceTimersByTimeAsync(150);expect(send).toHaveBeenCalledOnce();q.dispose();
+});

@@ -1,3 +1,4 @@
+import {projectionFor} from './original-text';
 type Point = {node:Text;offset:number};
 export type MeaningTextSource = {element:HTMLElement;text:string;points:Point[];ends:Point[]};
 const blockedTags=new Set(['SCRIPT','STYLE','NAV','BUTTON','INPUT','TEXTAREA','SELECT','IFRAME','NOSCRIPT','SVG','CANVAS']);
@@ -23,8 +24,9 @@ export function collectMeaningSources(root:Element):MeaningTextSource[]{
  const flush=()=>{if(current?.text)sources.push(current);current=null;pending=false;};
  while((node=walker.nextNode())){
   if(node.nodeType===1){const el=node as Element;if(isBlock(el))flush();if(el.tagName.toUpperCase()==='BR'&&current?.text)pending=true;continue;}
-  const textNode=node as Text,parent=textNode.parentElement;if(!parent)continue;
+  const liveText=node as Text,parent=liveText.parentElement;if(!parent)continue;
   if(pdfOnly&&!parent.closest('[data-pdf-selection-key]'))continue;
+  const textNode=(projectionFor(liveText)?.canonicalNode(liveText) as Text|null|undefined)??liveText;
   const owner=ownerOf(parent);
   if(current&&current.element!==owner)flush();
   if(!current)current={element:owner,text:'',points:[],ends:[]};
@@ -39,7 +41,7 @@ export function collectMeaningSources(root:Element):MeaningTextSource[]{
 }
 export function sourceRange(source:MeaningTextSource,start:number,end:number):Range{
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>source.text.length)throw new RangeError('Invalid source span');
- const range=source.element.ownerDocument.createRange(),first=source.points[start],last=source.ends[end-1];
+ const first=source.points[start],last=source.ends[end-1],range=first.node.ownerDocument.createRange();
  range.setStart(first.node,first.offset);range.setEnd(last.node,last.offset);return range;
 }
 export function observeMeaningSources(root:Element,changed:()=>void){const observer=new root.ownerDocument.defaultView!.MutationObserver(changed);observer.observe(root,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden','aria-hidden','class','style','role','epub:type']});return observer;}

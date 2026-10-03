@@ -1,3 +1,4 @@
+import {projectedRanges} from './original-text';
 import {meaningPalette} from '@/lib/meaning-theme';
 import type {MeaningGroupResult} from '@/lib/meaning-groups';
 import {sourceRange,type MeaningTextSource} from './meaning-text-source';
@@ -11,12 +12,13 @@ export const supportsMeaningHighlights=(doc:Document)=>Boolean((doc.defaultView 
 export function meaningRanges(source:MeaningTextSource,result:MeaningGroupResult,offset=0){
  if(source.text.slice(offset,offset+result.text.length)!==result.text)return null;
  const mapped=offsetMeaningResult(result,offset);
- return {groups:mapped.groups.map(span=>sourceRange(source,span.start,span.end)),verbs:mapped.verbs.map(span=>sourceRange(source,span.start,span.end))};
+ const groupRanges=mapped.groups.map(span=>projectedRanges(sourceRange(source,span.start,span.end)));
+ return {groups:groupRanges.flat(),groupRanges,verbs:mapped.verbs.flatMap(span=>projectedRanges(sourceRange(source,span.start,span.end)))};
 }
 export function paintMeaningHighlights(doc:Document,entries:Array<{source:MeaningTextSource;result:MeaningGroupResult;offset:number}>,theme:'light'|'dark'|'sepia',lowSaturation=false){
  const win=doc.defaultView as HighlightWindow|null;if(!supportsMeaningHighlights(doc)||!win?.Highlight||!win.CSS?.highlights)return;
  const buckets:Range[][]=[[],[],[],[]];
- for(const entry of entries){const mapped=meaningRanges(entry.source,entry.result,entry.offset);if(!mapped)continue;mapped.groups.forEach((r,i)=>buckets[i%3].push(r));mapped.verbs.forEach(r=>buckets[3].push(r));}
+ for(const entry of entries){const mapped=meaningRanges(entry.source,entry.result,entry.offset);if(!mapped)continue;mapped.groupRanges.forEach((ranges,i)=>buckets[i%3].push(...ranges));mapped.verbs.forEach(r=>buckets[3].push(r));}
  let style=doc.querySelector<HTMLStyleElement>('style[data-reader-meaning-style]');
  if(!style){style=doc.createElement('style');style.dataset.readerMeaningStyle='true';doc.head.appendChild(style);}
  const palette=meaningPalette(theme,lowSaturation);
