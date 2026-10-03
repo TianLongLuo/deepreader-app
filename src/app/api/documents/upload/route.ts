@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { documentService } from '@/server/documents/document.service';
 import { validateUpload } from '@/server/documents/validate-upload';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/upload-config';
+import { getDocumentUploadType } from '@/lib/document-upload-type';
 
 const configuredUploadSize = Number(process.env.MAX_UPLOAD_SIZE);
 const MAX_UPLOAD_SIZE = Number.isSafeInteger(configuredUploadSize) && configuredUploadSize > 0
@@ -30,18 +31,12 @@ export async function POST(req: Request) {
     }
 
     const title = file.name;
-    const extension = title.split('.').pop()?.toLowerCase();
-    
-    let fileType: 'PDF' | 'EPUB';
-    if (extension === 'pdf' || file.type === 'application/pdf') {
-      fileType = 'PDF';
-    } else if (extension === 'epub' || file.type === 'application/epub+zip') {
-      fileType = 'EPUB';
-    } else {
-      return NextResponse.json({ error: 'Unsupported file type. Only PDF and EPUB are allowed.' }, { status: 415 });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const fileType = getDocumentUploadType(file, buffer.subarray(0, 4));
+    if (!fileType) {
+      return NextResponse.json({ error: '仅支持 PDF 和 EPUB 文件。' }, { status: 415 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
     const isPdf=buffer.subarray(0,4).toString()==='%PDF';
     const isZip=buffer.length>=4&&buffer[0]===0x50&&buffer[1]===0x4b&&buffer[2]===3&&buffer[3]===4;
     if(!buffer.length||(fileType==='PDF'?!isPdf:!isZip))return NextResponse.json({error:'文件内容与类型不符。'},{status:415});
@@ -55,7 +50,7 @@ export async function POST(req: Request) {
       title,
       fileType,
       buffer,
-      file.type
+      fileType === 'EPUB' ? 'application/epub+zip' : 'application/pdf'
     );
 
     return NextResponse.json({ success: true, document });

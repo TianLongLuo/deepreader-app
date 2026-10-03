@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { UploadCloud, FileText } from 'lucide-react';
+import { canInspectDocumentSignature, getDocumentUploadType } from '@/lib/document-upload-type';
 import {
   MAX_DOCUMENT_UPLOAD_BYTES,
   MAX_DOCUMENT_UPLOAD_MB,
@@ -13,9 +14,14 @@ import {
 export default function UploadPage() {
   const router = useRouter();
   const uploadRequest=useRef<XMLHttpRequest|null>(null);
-  useEffect(()=>()=>uploadRequest.current?.abort(),[]);
+  const selectionRequest = useRef(0);
+  useEffect(() => () => {
+    selectionRequest.current++;
+    uploadRequest.current?.abort();
+  }, []);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [phase,setPhase]=useState('');
   const [error, setError] = useState('');
 
@@ -31,26 +37,47 @@ export default function UploadPage() {
     if (selectedFile) validateAndSetFile(selectedFile);
   };
 
-  const validateAndSetFile = (f: File) => {
+  const validateAndSetFile = async (f: File) => {
+    if (loading) return;
+    const request = ++selectionRequest.current;
     setError('');
-    const validTypes = ['application/pdf', 'application/epub+zip'];
-    const validExts = ['.pdf', '.epub'];
-
-    if (!validTypes.includes(f.type) && !validExts.some(ext => f.name.toLowerCase().endsWith(ext))) {
-      setError('仅支持 PDF 和 EPUB 文件。');
-      return;
-    }
-
+    setFile(null);
+    setChecking(false);
+    // Check size before reading even the small signature of an unknown file.
     if (f.size > MAX_DOCUMENT_UPLOAD_BYTES) {
       setError(`文件过大，最大支持 ${MAX_DOCUMENT_UPLOAD_MB}MB.`);
       return;
     }
 
+    let type = getDocumentUploadType(f);
+    if (!type && canInspectDocumentSignature(f)) {
+      setChecking(true);
+      try {
+        const signature = await new Promise<Uint8Array>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+          reader.onerror = () => reject(reader.error ?? new Error('File read failed'));
+          reader.readAsArrayBuffer(f.slice(0, 4));
+        });
+        type = getDocumentUploadType(f, signature);
+      } catch {
+        if (request !== selectionRequest.current) return;
+        setChecking(false);
+        setError('读取文件失败，请重新选择。');
+        return;
+      }
+    }
+    if (request !== selectionRequest.current) return;
+    setChecking(false);
+    if (!type) {
+      setError('仅支持 PDF 和 EPUB 文件。');
+      return;
+    }
     setFile(f);
   };
 
   const handleUpload = async () => {
-    if (!file||loading) return;
+    if (!file||loading||checking) return;
     setLoading(true);setPhase('准备文件…');
     setError('');
 
@@ -113,7 +140,7 @@ export default function UploadPage() {
                   type="file"
                   id="file-upload"
                   className="hidden"
-                  accept=".pdf,.epub,application/pdf,application/epub+zip"
+                  accept=".pdf,.epub,.zip,application/pdf,application/epub+zip,application/x-epub+zip,application/zip,application/x-zip-compressed,application/octet-stream"
                   onChange={handleFileChange}
                 />
                 <Button variant="secondary" onClick={() => document.getElementById('file-upload')?.click()}>
@@ -123,6 +150,7 @@ export default function UploadPage() {
             )}
           </div>
 
+          {checking && <p role="status" className="mt-4 text-sm text-muted-foreground">正在识别文件类型…</p>}
           {loading&&phase!=='正在保存书籍…'&&<Button variant="outline" onClick={()=>uploadRequest.current?.abort()}>取消上传</Button>}
           {error && (
             <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-600">
@@ -131,7 +159,7 @@ export default function UploadPage() {
           )}
 
           <div className="mt-8 flex justify-end">
-            <Button size="lg" disabled={!file || loading} onClick={handleUpload}>
+            <Button size="lg" disabled={!file || loading || checking} onClick={handleUpload}>
               {loading ? phase : '导入书籍'}
             </Button>
           </div>

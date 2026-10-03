@@ -1,4 +1,4 @@
-import EPub from 'epub2';
+import { CompatibleEPub } from './compatible-epub';
 import { load } from 'cheerio';
 import { createChildLogger } from '@/lib/logger';
 import { ParsedDocument, ParsedSection, ParsedParagraph } from '@/types/documents';
@@ -22,7 +22,7 @@ export class EpubParser {
     try {
       await fs.promises.writeFile(tempFilePath, buffer);
       
-      const epub = await EPub.createAsync(tempFilePath);
+      const epub = await CompatibleEPub.createAsync(tempFilePath);
       
       const parsedDoc: ParsedDocument = {
         title: epub.metadata.title || title,

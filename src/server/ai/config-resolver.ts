@@ -71,8 +71,9 @@ export interface ResolvedAIConfig {
 
 /**
  * Resolves AI provider configuration from database settings.
- * Shared global settings take precedence. An explicitly selected MiMo must
- * never silently fall back to another provider when its credentials are missing.
+ * Authorized readers' enabled personal settings take precedence over sharing.
+ * For the primary admin and readers without personal settings, a selected
+ * shared MiMo must never silently fall back when its credentials are missing.
  */
 export class AIConfigResolver {
   /**
@@ -147,6 +148,9 @@ export class AIConfigResolver {
     const workspaceConfigAllowed = aiAccess.canManageOwnAiSettings
       ? workspaceConfig
       : null;
+    // A connection test uses the reader's own settings; real calls must select
+    // those same settings, not an unrelated shared key or admin fallback.
+    const prefersPersonalConfig = Boolean(workspaceConfigAllowed && !aiAccess.isPrimaryAdmin);
     const selectedProviderHasGlobalKey =
       appConfig.globalAiProvider === 'mimo'
         ? Boolean(appConfig.globalMimoApiKeyEncrypted)
@@ -156,13 +160,13 @@ export class AIConfigResolver {
     const canUseGlobalConfig =
       selectedProviderHasGlobalKey &&
       (aiAccess.isPrimaryAdmin || appConfig.shareGlobalDeepSeekWithUsers);
-    const shouldForceGlobalConfig = Boolean(
+    const shouldForceGlobalConfig = !prefersPersonalConfig && Boolean(
       (appConfig.shareGlobalDeepSeekWithUsers && selectedProviderHasGlobalKey) ||
       (appConfig.globalAiProvider === 'mimo' &&
         (appConfig.shareGlobalDeepSeekWithUsers || aiAccess.isPrimaryAdmin))
     );
     const canUseAdminFallback = Boolean(
-      appConfig.shareGlobalDeepSeekWithUsers && adminWorkspaceConfig
+      !prefersPersonalConfig && appConfig.shareGlobalDeepSeekWithUsers && adminWorkspaceConfig
     );
 
     if (shouldForceGlobalConfig) {

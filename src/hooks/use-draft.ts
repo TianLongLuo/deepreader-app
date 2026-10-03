@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
  * Hook to persist form draft state.
  * Syncs unsaved structured data into localStorage safely.
  */
-export function useDraft<T>(key: string, initialValue: T) {
+export function useDraft<T>(key: string, initialValue: T, sanitizeStoredValue?: (value: T) => T) {
   const [draft, setDraft] = useState<T>(initialValue);
   const [hasDraft, setHasDraft] = useState<boolean>(false);
 
@@ -15,26 +15,35 @@ export function useDraft<T>(key: string, initialValue: T) {
     try {
       const stored = localStorage.getItem(`draft:${key}`);
       if (stored) {
-        setDraft(JSON.parse(stored));
+        const parsed = JSON.parse(stored) as T;
+        const restored = sanitizeStoredValue ? sanitizeStoredValue(parsed) : parsed;
+        // Browser-only hydration keeps the server/first client render identical.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setDraft(restored);
         setHasDraft(true);
+        // Scrub any older persisted secrets before this draft is used again.
+        const sanitized = JSON.stringify(restored);
+        if (sanitizeStoredValue && sanitized !== stored) localStorage.setItem(`draft:${key}`, sanitized);
       }
-    } catch (e) {
+    } catch {
       // Ignore parse errors
     }
-  }, [key]);
+  }, [key, sanitizeStoredValue]);
 
   // Update both state and local storage
   const updateDraft = (newVal: T) => {
     setDraft(newVal);
     setHasDraft(true);
-    localStorage.setItem(`draft:${key}`, JSON.stringify(newVal));
+    try {
+      localStorage.setItem(`draft:${key}`, JSON.stringify(sanitizeStoredValue ? sanitizeStoredValue(newVal) : newVal));
+    } catch { /* A blocked browser store must not prevent in-memory editing. */ }
   };
 
   // Clear draft
   const discardDraft = () => {
     setDraft(initialValue);
     setHasDraft(false);
-    localStorage.removeItem(`draft:${key}`);
+    try { localStorage.removeItem(`draft:${key}`); } catch {}
   };
 
   // Check if draft exists without loading it via state to avoid hydration issues

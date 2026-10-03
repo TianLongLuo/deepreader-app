@@ -1,21 +1,16 @@
 'use client';
 
 import {signalReadingAISettingsChanged} from '@/lib/reading-ai-epoch';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDraft } from '@/hooks/use-draft';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AIProviderSettings } from '@/types/ai';
 
-export default function AISettingsForm({ initialData,userId }: { initialData: any;userId:string }) {
-  const [saveError,setSaveError]=useState('');
-  const [loading, setLoading] = useState(false);
-  const [testLoading, setTestLoading] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency?: number } | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  const defaultValues: AIProviderSettings = {
+type AISettingsFormData = AIProviderSettings & { maskedApiKeyPreview?: string };
+type AISettingsFormProps = { initialData: Partial<AISettingsFormData>; userId: string };
+const defaultValues: AISettingsFormData = {
     providerKey: 'deepseek',
     isEnabled: true,
     baseUrl: 'https://api.deepseek.com',
@@ -33,26 +28,33 @@ export default function AISettingsForm({ initialData,userId }: { initialData: an
     isDefault: true,
     priority: 0,
     apiKey: '',
-  };
+};
 
-  // Merge default values properly if initialData is empty Object
-  const mergedInitialData = initialData && Object.keys(initialData).length > 0
-    ? { ...defaultValues, ...initialData }
-    : defaultValues;
+export default function AISettingsForm(props: AISettingsFormProps) {
+  // An account change also drops in-memory credentials and old test results.
+  return <AISettingsFormFields key={props.userId} {...props} />;
+}
+function AISettingsFormFields({ initialData,userId }: AISettingsFormProps) {
+  const [saveError,setSaveError]=useState('');
+  const [loading, setLoading] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const formKey = 'ai_settings_draft';
-  const { draft, hasDraft, updateDraft, discardDraft } = useDraft<any>(formKey, mergedInitialData);
+  const mergedInitialData = useMemo(() => ({ ...defaultValues, ...initialData, apiKey: '' }), [initialData]);
+  const sanitizeDraft = useCallback((value: AISettingsFormData) => ({ ...mergedInitialData, ...value, apiKey: '' }), [mergedInitialData]);
 
-  // Update draft from initialData if local storage is empty and initialData has properties
+  const formKey = `ai_settings_draft:${userId}`;
+  const { draft, hasDraft, updateDraft, discardDraft } = useDraft(formKey, mergedInitialData, sanitizeDraft);
+
+  // The old unscoped draft has no provable owner; never migrate its credentials.
   useEffect(() => {
-    if (!hasDraft && initialData && Object.keys(initialData).length > 0) {
-      updateDraft({ ...defaultValues, ...initialData, apiKey: '' });
-    }
-  }, [initialData, hasDraft]);
+    try { localStorage.removeItem('draft:ai_settings_draft'); } catch {}
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
-    let finalValue: any = value;
+    let finalValue: string | number | boolean = value;
 
     if (type === 'checkbox') {
       finalValue = (e.target as HTMLInputElement).checked;
@@ -80,7 +82,7 @@ export default function AISettingsForm({ initialData,userId }: { initialData: an
       });
       const data = await res.json();
       setTestResult(data);
-    } catch (e) {
+    } catch {
       setTestResult({ success: false, message: 'Request failed to execute' });
     } finally {
       setTestLoading(false);
@@ -177,10 +179,11 @@ export default function AISettingsForm({ initialData,userId }: { initialData: an
             </Button>
             {testResult && (
               <div className={`text-sm py-2 px-3 rounded-md font-medium ${testResult.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                {testResult.success ? `✓ ${testResult.message} (${testResult.latency}ms)` : `⚠️ ${testResult.message}`}
+                {testResult.success ? `✓ ${testResult.message}${typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : ''}` : `⚠️ ${testResult.message}`}
               </div>
             )}
           </div>
+          <p className="text-xs text-muted-foreground">测试只验证连接；修改后请点击“保存设置”生效。</p>
         </CardContent>
       </Card>
 

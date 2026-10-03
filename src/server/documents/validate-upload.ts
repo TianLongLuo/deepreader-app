@@ -1,4 +1,4 @@
-import EPub from 'epub2';
+import { CompatibleEPub } from '../parsing/compatible-epub';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -13,7 +13,7 @@ export async function validateUpload(buffer:Buffer,type:'PDF'|'EPUB') {
   finally{await parser.destroy().catch(()=>{});}
  }else{
   const dir=await mkdtemp(join(tmpdir(),'deepreader-validate-'));
-  try{const path=join(dir,'book.epub');await writeFile(path,buffer);const book=await EPub.createAsync(path);if(!book.flow?.length)throw Error('EPUB has no spine');for(const chapter of book.flow){if(!chapter.id)throw Error('EPUB spine is incomplete');await book.getChapterRawAsync(chapter.id);}}
+  try{const path=join(dir,'book.epub');await writeFile(path,buffer);const book=await CompatibleEPub.createAsync(path);if(!book.flow?.length)throw Error('EPUB has no spine');for(const chapter of book.flow){if(!chapter.id)throw Error('EPUB spine is incomplete');await book.getChapterRawAsync(chapter.id);}}
   finally{await rm(dir,{recursive:true,force:true});}
  }
 }
