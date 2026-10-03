@@ -31,6 +31,8 @@ import {
   useState,
 } from 'react';
 import { ReactReader, ReactReaderStyle } from 'react-reader';
+import {ReaderEdgeNavigation} from './reader-edge-navigation';
+import {epubReaderGutter,compactEpubCss,installCompactEpubPresentation} from './epub-reader-presentation';
 import {readingFlowOptions,anchorScrollDelta,readingWindowGeometry,moveReadingScreen,type ReadingFlow,type ContinuousManagerPort} from './reading-flow';
 import {installContinuousScrollSync} from './reading-flow';
 import {useReadingPreferences} from './reading-preferences';
@@ -330,32 +332,15 @@ function buildThemeDefinition(theme: ReaderTheme) {
 }
 
 function getReaderTheme(theme: ReaderTheme) {
-  switch (theme) {
-    case 'dark':
-      return {
-        ...ReactReaderStyle,
-        readerArea: {
-          ...ReactReaderStyle.readerArea,
-          backgroundColor: '#171717',
-        },
-      };
-    case 'sepia':
-      return {
-        ...ReactReaderStyle,
-        readerArea: {
-          ...ReactReaderStyle.readerArea,
-          backgroundColor: '#f5efdf',
-        },
-      };
-    default:
-      return {
-        ...ReactReaderStyle,
-        readerArea: {
-          ...ReactReaderStyle.readerArea,
-          backgroundColor: '#fcfcfa',
-        },
-      };
-  }
+  return {
+    ...ReactReaderStyle,
+    readerArea: {
+      ...ReactReaderStyle.readerArea,
+      backgroundColor: theme==='dark'?'#171717':theme==='sepia'?'#f5efdf':'#fcfcfa',
+    },
+    reader: {...ReactReaderStyle.reader,left:epubReaderGutter,right:epubReaderGutter},
+    arrow: {...ReactReaderStyle.arrow,display:'none'},
+  };
 }
 
 function buildNormalizedTextMap(element: HTMLElement): NormalizedTextMap | null {
@@ -1970,6 +1955,7 @@ export default function ReaderLayout({
       onContents:contents=>{
         const owned:Array<()=>void>=[],own=(off:()=>void)=>owned.push(off);notifyGeometry();epubContentsRef.current=[...epubContentsRef.current.filter(c=>c.document!==contents.document),contents];
         contents.addStylesheetCss('body,p,li{font-size:'+typographyRef.current.fontSize+'px !important;line-height:'+typographyRef.current.lineHeight+' !important;}','reader-typography');
+        if(!fixedLayout){contents.addStylesheetCss(compactEpubCss,'reader-compact-prose');own(installCompactEpubPresentation(contents.document,window,flowRef.current));}
         own(installFlipEvents(contents.document,contents));
         contents.addStylesheetCss('p,li,blockquote{overflow-wrap:anywhere;}','reader-flip-wrap');
         const down=()=>{delete contents.document.documentElement.dataset.readerSelectionConsumed;clearUnderlineAnnotations();};
@@ -2487,6 +2473,7 @@ export default function ReaderLayout({
       )}>
       <div className="relative h-full min-h-0">
         {document.fileType === 'EPUB' ? (
+          <>
           <ReactReader
             key={`${document.id}:${flow}:${fixedLayout}`}
             epubOptions={fixedLayout?{}:readingFlowOptions(flow)}
@@ -2500,6 +2487,8 @@ export default function ReaderLayout({
             readerStyles={getReaderTheme(theme)}
             epubInitOptions={{ openAs: 'epub' }}
           />
+          <ReaderEdgeNavigation flow={fixedLayout?'paginated':flow} ready={readingReady} onTurn={turnPage} hasSelection={()=>!canFlipPointer(globalThis.document)||epubContentsRef.current.some(contents=>!canFlipPointer(contents.document))}/>
+          </>
         ) : (
           <div className="relative flex h-full min-h-0 flex-col">
             <div className="shrink-0 border-b px-4 py-2 text-xs opacity-80">

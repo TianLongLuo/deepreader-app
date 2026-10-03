@@ -4,7 +4,8 @@ import {createElement,useEffect,useRef,StrictMode} from 'react';
 import {cleanup,fireEvent,render,screen,waitFor,act} from '@testing-library/react';
 import {EpubCFI} from 'epubjs';
 import ReaderLayout from '@/components/reader/reader-layout';
-const fixture=vi.hoisted(()=>({instances:[] as ReturnType<typeof makeRendition>[],writes:[] as {location:string;percentage:number}[],hold:false,budgets:[] as any[],props:[] as Array<unknown>}));
+import {epubReaderGutter} from '@/components/reader/epub-reader-presentation';
+const fixture=vi.hoisted(()=>({instances:[] as ReturnType<typeof makeRendition>[],writes:[] as {location:string;percentage:number}[],hold:false,budgets:[] as any[],props:[] as Array<unknown>,styles:[] as Array<unknown>}));
 const anchor='epubcfi(/6/2[ch1]!/4/2/1:4)',end='epubcfi(/6/2[ch1]!/4/2/1:16)';
 function makeRendition(doc:Document){
  const hooks=new Set<(contents:unknown)=>void>(),events=new Map<string,Set<(value:unknown)=>void>>();let size=600;
@@ -15,8 +16,8 @@ function makeRendition(doc:Document){
  const rendition={content,hooks:{content:{register:(fn:(c:unknown)=>void)=>{hooks.add(fn);},deregister:(fn:(c:unknown)=>void)=>{hooks.delete(fn);}}},on:(name:string,fn:(value:unknown)=>void)=>{if(!events.has(name))events.set(name,new Set());events.get(name)!.add(fn);},off:(name:string,fn:(v:unknown)=>void)=>{events.get(name)?.delete(fn);},book:{ready:Promise.resolve(),loaded:{metadata:Promise.resolve({language:'en',layout:'reflowable'})},locations:{generate:async()=>{},percentageFromCfi:()=>.3},section:()=>({href:'ch1.xhtml',index:0})},themes:{register:()=>{},select:()=>{}},annotations:{remove:()=>{},underline:()=>{}},manager:{settings:{offset:0},layout:{delta:1200},container:doc.defaultView!.frameElement!.parentElement!,scrollTop:0,scrollLeft:0,check:async()=>{},update:async()=>{},scrollBy:()=>{}},views:()=>({all:()=>[view]}),getContents:()=>[content],reportLocation:()=>{emit('relocated',{start:{cfi:anchor,percentage:.3},end:{cfi:end}});},display:async()=>{if(fixture.hold)await new Promise(()=>{});for(const fn of hooks)fn(content);emit('rendered',view);emit('displayed',view);rendition.reportLocation();},next:vi.fn(),prev:vi.fn(),emit,hooksCount:()=>hooks.size,listenersCount:()=>[...events.values()].reduce((n,set)=>n+set.size,0),changeSize:()=>size++};
  return rendition;
 }
-vi.mock('react-reader',()=>({ReactReaderStyle:{readerArea:{}},ReactReader:(props:{getRendition:(r:unknown)=>void;epubOptions?:{flow?:string};location?:string|number;tocChanged?:(toc:unknown[])=>void})=>{
- fixture.props.push(props.location);
+vi.mock('react-reader',()=>({ReactReaderStyle:{readerArea:{}},ReactReader:(props:{getRendition:(r:unknown)=>void;epubOptions?:{flow?:string};location?:string|number;tocChanged?:(toc:unknown[])=>void;readerStyles?:unknown})=>{
+ fixture.props.push(props.location);fixture.styles.push(props.readerStyles);
  const iframe=useRef<HTMLIFrameElement>(null);
  useEffect(()=>{const r=makeRendition(iframe.current!.contentDocument!);fixture.instances.push(r);props.getRendition(r);props.tocChanged?.([{id:"test-ch1",label:"Test chapter",href:"ch1.xhtml"}]);void r.display();},[]);
  return createElement('iframe',{ref:iframe,'data-fixture-flow':props.epubOptions?.flow});
@@ -29,7 +30,7 @@ vi.mock('@/components/reader/explanation-panel',()=>({default:()=>createElement(
 vi.mock('@/components/reader/pdf-original-view',()=>({default:()=>null}));
 vi.mock('@/hooks/use-meaning-group-reading',()=>({useMeaningGroupReading:(input:any)=>{fixture.budgets.push(input.budget);return ({unsupported:false,skipped:0,retry:()=>{},pending:0,ready:0,failed:0,blocked:false,deferred:0,retryAt:null});}}));
 beforeEach(()=>{
- fixture.instances=[];fixture.budgets=[];fixture.props=[];fixture.writes=[];fixture.hold=false;localStorage.clear();
+ fixture.instances=[];fixture.budgets=[];fixture.props=[];fixture.styles=[];fixture.writes=[];fixture.hold=false;localStorage.clear();
  vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
  vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({left:0,right:1200,top:0,bottom:700,width:1200,height:700,x:0,y:0,toJSON:()=>{}});
  vi.stubGlobal('fetch',async(_url:string,options?:RequestInit)=>{if(options?.method==='PATCH'){fixture.writes.push(JSON.parse(String(options.body)));return Response.json({ok:true});}return Response.json({items:[],progress:{location:anchor,percentage:30}});});
@@ -108,4 +109,16 @@ it('removes the legacy paragraph title and hover treatment while semantic mode i
  expect(current.documentElement.dataset.readerSemanticFlip).toBe('true');
  fireEvent.mouseEnter(current.querySelector('p')!);expect(current.querySelector('p')!.dataset.readerHovered).not.toBe('true');
  fireEvent.click(screen.getByLabelText('语义翻牌'));await waitFor(()=>expect(current.querySelector('p')!.title).toContain('点击单词'));
+});
+
+it('removes built-in arrow glyphs, wires blank edge navigation, and excludes vertical reading',async()=>{
+ const view=mount();await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
+ expect(fixture.styles.at(-1)).toMatchObject({arrow:{display:'none'},reader:{left:epubReaderGutter,right:epubReaderGutter}});
+ const edge=screen.getByRole('button',{name:'下一页（点击页边）'}),r=fixture.instances[0];
+ const press=()=>{for(const type of ['pointerdown','pointerup']){const e=new Event(type,{bubbles:true});for(const [key,value]of Object.entries({pointerId:1,pointerType:'mouse',button:0,isPrimary:true,clientX:5,clientY:100}))Object.defineProperty(e,key,{value});fireEvent(edge,e);}fireEvent.click(edge,{detail:1});};
+ const selection=r.content.document.createRange();selection.selectNodeContents(r.content.document.querySelector('p')!);r.content.window.getSelection()!.addRange(selection);press();expect(r.next).not.toHaveBeenCalled();
+ r.content.window.getSelection()!.removeAllRanges();press();expect(r.next).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('button',{name:'上一页（点击页边）'}),{detail:0});expect(r.prev).toHaveBeenCalledTimes(1);
+ fireEvent.change(screen.getByLabelText('阅读方式'),{target:{value:'vertical'}});await waitFor(()=>expect(fixture.instances).toHaveLength(2));
+ expect(view.container.querySelector('[data-reader-page-edge]')).toBeNull();
 });

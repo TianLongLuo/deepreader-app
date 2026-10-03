@@ -60,3 +60,33 @@ it('keeps source-masking paint static when the browser has no CSS Highlight supp
  const p=createTextProjection(doc.documentElement,{layout:'stable'}),r=p.canonicalDocument.createRange();r.setStart(p.canonicalDocument.querySelector('p')!.firstChild!,0);r.setEnd(r.startContainer,3);
  const off=p.pending({id:'cat',originalRange:r}),slot=doc.querySelector<HTMLElement>('[data-semantic-slot]')!;expect(slot.style.animation).toBe('none');expect(slot.style.getPropertyPriority('animation')).toBe('important');off();p.dispose();
 });
+it('isolates translated glyph metrics and colour from the EPUB universal important theme',()=>{
+ const win=new JSDOM('<style>*{font-family:serif!important;line-height:1.8!important;color:inherit!important}</style><body style="color:rgb(232,232,229)!important;font-size:18px"><p>my father</p></body>').window,doc=win.document;
+ Object.defineProperty(win.Range.prototype,'getClientRects',{value:()=>[{left:10,top:20,right:34,bottom:41,width:24,height:21}]});
+ const p=createTextProjection(doc.documentElement,{layout:'stable'}),r=p.canonicalDocument.createRange();r.setStart(p.canonicalDocument.querySelector('p')!.firstChild!,0);r.setEnd(r.startContainer,2);p.apply({id:'my',originalRange:r,replacement:'我的'});
+ const slot=doc.querySelector<HTMLElement>('[data-semantic-slot]')!,label=doc.querySelector<HTMLElement>('[data-semantic-label]')!;
+ expect(slot.style.overflow).toBe('visible');expect(slot.style.textOverflow).not.toBe('ellipsis');
+ expect(label.textContent).toBe('我的');for(const key of ['font-family','font-size','line-height','color'])expect(label.style.getPropertyPriority(key)).toBe('important');
+ expect(label.style.color).toBe('rgb(232, 232, 229)');expect(doc.querySelector('p')!.textContent).toBe('my father');p.dispose();
+});
+it('uses untransformed text width for fitting and leaves a long gloss source readable',()=>{
+ const win=new JSDOM('<p style="font-size:18px">my father</p>').window,doc=win.document,registry=new Map<string,{ranges:Range[];priority:number}>();
+ class HighlightFixture{priority=0;ranges:Range[];constructor(...ranges:Range[]){this.ranges=ranges;}}
+ Object.defineProperty(win,'CSS',{value:{highlights:registry}});Object.defineProperty(win,'Highlight',{value:HighlightFixture});
+ Object.defineProperty(win.Range.prototype,'getClientRects',{value:()=>[{left:10,top:20,right:34,bottom:41,width:24,height:21}]});
+ Object.defineProperty(win.HTMLElement.prototype,'scrollWidth',{get(){return this.textContent==='我的'?34:360;}});
+ const p=createTextProjection(doc.documentElement,{layout:'stable'}),r=p.canonicalDocument.createRange();r.setStart(p.canonicalDocument.querySelector('p')!.firstChild!,0);r.setEnd(r.startContainer,2);
+ const off=p.pending({id:'my',originalRange:r});p.apply({id:'my',originalRange:r,replacement:'我的'});off();
+ expect(parseFloat(doc.querySelector<HTMLElement>('[data-semantic-label]')!.style.fontSize)).toBeCloseTo(18*24/34);expect(doc.querySelector('[data-semantic-replacement]')!.getAttribute('data-semantic-fit')).toBe('inline');
+ p.apply({id:'my',originalRange:r,replacement:'a particularly long complete expression'});
+ expect(doc.querySelector('[data-semantic-replacement]')!.getAttribute('data-semantic-fit')).toBe('full');expect(doc.querySelector<HTMLElement>('[data-semantic-slot]')!.style.visibility).toBe('hidden');
+ expect([...registry].find(([key])=>!key.endsWith('-full'))![1].ranges).toHaveLength(0);expect([...registry].find(([key])=>key.endsWith('-full'))![1].ranges).toHaveLength(1);
+ expect(doc.querySelector('p')!.textContent).toBe('my father');p.dispose();expect(registry.size).toBe(0);
+});
+it('keeps every fragment of an overlong cross-line word readable without CSS Highlight support',()=>{
+ const win=new JSDOM('<p style="font-size:18px">re-enter</p>').window,doc=win.document;
+ Object.defineProperty(win.Range.prototype,'getClientRects',{value:()=>[{left:10,top:20,right:34,bottom:41,width:24,height:21},{left:10,top:50,right:30,bottom:71,width:20,height:21}]});
+ Object.defineProperty(win.HTMLElement.prototype,'scrollWidth',{get(){return this.textContent?360:0;}});
+ const p=createTextProjection(doc.documentElement,{layout:'stable'}),r=p.canonicalDocument.createRange();r.selectNodeContents(p.canonicalDocument.querySelector('p')!);p.apply({id:'cross',originalRange:r,replacement:'a long replacement phrase'});
+ expect([...doc.querySelectorAll<HTMLElement>('[data-semantic-slot]')].map(e=>e.style.visibility)).toEqual(['hidden','hidden']);expect(doc.querySelector('p')!.textContent).toBe('re-enter');p.dispose();
+});

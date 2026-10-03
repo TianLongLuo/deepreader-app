@@ -151,3 +151,29 @@ export async function runReaderMotionQA(page,outputDir){
  await page.unroute('**/api/semantic-flip');await page.emulateMedia({reducedMotion:'no-preference'});
  return {pending,complete,stableGeometry:true,reverse:true,reducedMotion:true,failureCleanup:true};
 }
+
+
+export async function runReaderReadabilityQA(page,outputDir){
+ const base='http://127.0.0.1:3018',assert=(x,m)=>{if(!x)throw Error(m)},results=[];
+ await page.unrouteAll({behavior:'ignoreErrors'});await page.emulateMedia({reducedMotion:'no-preference'});
+ await page.route('**/api/semantic-flip',async r=>{const w=r.request().postDataJSON().targetWord;return r.fulfill({status:200,contentType:'application/x-ndjson',body:JSON.stringify({type:'start',requestId:'cjk',cached:false})+'\n'+JSON.stringify({type:'complete',requestId:'cjk',value:{replacement:({my:'我的',meet:'见他',important:'要紧'})[w]||'这是一个非常长的完整语境释义用于测试不会把正文隐藏',provider:'fixture',model:'fixture'}})+'\n'});});
+ const cdp=await page.context().newCDPSession(page);
+ for(const mobile of [false,true])for(const flow of ['paginated','vertical'])for(const theme of ['light','dark']){
+  await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:mobile,maxTouchPoints:1});await page.setViewportSize(mobile?{width:390,height:844}:{width:1400,height:900});
+  const tag=`${mobile?'phone':'pc'}-${flow}-${theme}`;await page.goto(base+'/?case='+tag+'&theme='+theme);await page.evaluate(flow=>{localStorage.clear();localStorage.setItem('deepreader-reading:fixture-reader',JSON.stringify({version:1,preferences:{flow,semanticFlip:true,targets:{en:'zh',es:'en'}}}));},flow);await page.reload();
+  await page.waitForFunction(()=>document.querySelector('[data-reading-phase]')?.dataset.readingPhase==='ready');await page.waitForTimeout(550);
+  const metrics=()=>page.evaluate(()=>{const f=document.querySelector('iframe'),d=f.contentDocument,p=d.querySelector('#short-words'),n=p.firstChild,a=p.getBoundingClientRect();return {source:p.innerHTML,rect:[a.x,a.y,a.width,a.height],wordRects:['my','meet','important'].map(word=>{const r=d.createRange(),i=n.textContent.indexOf(word);r.setStart(n,i);r.setEnd(n,i+word.length);const a=r.getBoundingClientRect();return [a.x,a.y,a.width,a.height]}),view:qa.metrics(),progress:qa.savedProgress()};});
+  const before=await metrics();
+  const point=word=>page.evaluate(word=>{const f=document.querySelector('iframe'),d=f.contentDocument,p=d.querySelector('#short-words'),n=p.firstChild,r=d.createRange(),i=n.textContent.indexOf(word);r.setStart(n,i);r.setEnd(n,i+word.length);const a=r.getBoundingClientRect(),b=f.getBoundingClientRect();return {x:b.left+a.x+a.width/2,y:b.top+a.y+a.height/2};},word);
+  for(const [i,word]of ['my','meet','important'].entries()){
+   const p=await point(word);if(mobile){await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}else await page.mouse.click(p.x,p.y);
+   await page.waitForFunction(n=>qa.completed().length===n,i+1);await page.waitForTimeout(240);
+  }
+  const checks=await page.evaluate(()=>{const f=document.querySelector('iframe'),d=f.contentDocument,css=f.contentWindow.getComputedStyle(d.querySelector('#short-words'));return {labels:[...d.querySelectorAll('[data-semantic-replacement]')].map(g=>{const s=g.querySelector('[data-semantic-slot]'),t=s.querySelector('[data-semantic-label]'),c=f.contentWindow.getComputedStyle(t),r=d.createRange();r.selectNodeContents(t);const ink=r.getBoundingClientRect();return {text:t.textContent,mode:g.dataset.semanticFit,width:s.clientWidth,natural:t.scrollWidth,size:parseFloat(c.fontSize),color:c.color,expectedColor:css.color,lineHeight:c.lineHeight,overflow:f.contentWindow.getComputedStyle(s).overflow,inkHeight:ink.height,visible:f.contentWindow.getComputedStyle(s).visibility};}),align:css.textAlign,compact:d.documentElement.dataset.readerCompact,edges:[...document.querySelectorAll('[data-reader-page-edge]')].map(e=>e.textContent)};});
+  assert(JSON.stringify(before)===JSON.stringify(await metrics()),tag+' changed original layout or progress');assert(checks.labels.length===3,tag+' missing labels');
+  for(const c of checks.labels){assert(c.mode==='inline'&&c.visible==='visible',tag+' short replacement hidden '+JSON.stringify(c));assert(c.natural<=c.width+1,tag+' label still cropped '+JSON.stringify(c));assert(c.size>=10&&c.color===c.expectedColor&&c.overflow==='visible',tag+' incorrect readable metrics '+JSON.stringify(c));}
+  assert(flow==='vertical'?checks.edges.length===0:checks.edges.length===2&&checks.edges.every(t=>t===''),tag+' arrows present or edge missing');if(mobile)assert(checks.align==='start'&&checks.compact==='true',tag+' mobile justified');
+  if(outputDir)await page.screenshot({path:outputDir+'/'+tag+'.png'});results.push({tag,checks});
+ }
+ await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:false});await cdp.detach();await page.setViewportSize({width:1400,height:900});return results;
+}
