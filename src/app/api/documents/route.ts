@@ -12,6 +12,7 @@ export async function GET() {
     const documents = await documentService.listDocuments(user.workspaceId, user.id);
     return NextResponse.json(documents);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    const status = error instanceof Error && error.message === 'Authentication required' ? 401 : 500;
+    return NextResponse.json({ error: (error as Error).message }, { status });
   }
 }
