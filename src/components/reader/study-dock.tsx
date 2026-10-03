@@ -1,17 +1,18 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { useReaderStore } from '@/hooks/use-reader-store';
 import { floatingPanelLayout, type StudyAnchor, type FloatingFrame } from './floating-study-layout';
 import {Pin,X,GripHorizontal} from 'lucide-react';
 import {useUIPreferences} from '@/hooks/use-ui-preferences';
 import type {PanelKind} from '@/lib/ui-preferences';
 import type {AnchorHandle} from './selection-anchor';
-import {shouldDismiss,isAnchorOffscreen} from './floating-study-policy';
+import {installStudyDismiss} from './study-dismiss-events';
+import {isAnchorOffscreen} from './floating-study-policy';
 import StudyLanguageSelect from './study-language-select';
 
-type Props={children:ReactNode;panel:ReactNode;open:boolean;side:'left'|'right';title:string;onClose:()=>void;anchor?:StudyAnchor;kind?:PanelKind;anchorHandle?:AnchorHandle;onReturnToSource?:()=>void};
+type Props={children:ReactNode;panel:ReactNode;open:boolean;side:'left'|'right';title:string;onClose:()=>void;anchor?:StudyAnchor;kind?:PanelKind;anchorHandle?:AnchorHandle;onReturnToSource?:()=>void;flow?:'vertical'|'paginated'};
 type Gesture={kind:'move'|'resize';pointerId:number;x:number;y:number;start:FloatingFrame};
-export default function StudyDock({children,panel,open,side,title,onClose,anchor,kind='word',anchorHandle,onReturnToSource}:Props){
+export default function StudyDock({children,panel,open,side,title,onClose,anchor,kind='word',anchorHandle,onReturnToSource,flow='paginated'}:Props){
  const root=useRef<HTMLDivElement>(null);
  const {studyPinned:pinned,setStudyPinned}=useReaderStore();
  const {panels,setPanelSize}=useUIPreferences();
@@ -23,14 +24,14 @@ export default function StudyDock({children,panel,open,side,title,onClose,anchor
  const [frame,setFrame]=useState({left:0,top:0,width:0,height:0});
  const [gesture,setGesture]=useState<Gesture|null>(null);
  const [manual,setManual]=useState<{anchor:StudyAnchor|undefined;box:FloatingFrame}|null>(null);
- useEffect(()=>{const node=root.current;if(!node)return;const measure=()=>{const r=node.getBoundingClientRect();setFrame({left:r.left,top:r.top,width:r.width,height:r.height});};const observer=new ResizeObserver(measure);observer.observe(node);window.addEventListener('resize',measure);measure();return()=>{observer.disconnect();window.removeEventListener('resize',measure);};},[]);
+ useEffect(()=>{const node=root.current;if(!node)return;const measure=()=>{const r=node.getBoundingClientRect();setFrame({left:r.left,top:r.top,width:r.width,height:Math.max(0,Math.min(r.height,(window.visualViewport?.height??window.innerHeight)-Math.max(0,r.top)))});};const observer=new ResizeObserver(measure);observer.observe(node);window.addEventListener('resize',measure);window.visualViewport?.addEventListener('resize',measure);measure();return()=>{observer.disconnect();window.removeEventListener('resize',measure);window.visualViewport?.removeEventListener('resize',measure);};},[]);
  useEffect(()=>{if(pinned&&!gesture)setManual(null);},[live,frame.width,frame.height,pinned]);
  useEffect(()=>{if(!open){setManual(null);setGesture(null);}},[open]);
- useEffect(()=>{if(!open)return;const update=()=>{const next=anchorHandle?.measure()??null;setLive(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);};update();const timer=window.setInterval(update,180);return()=>clearInterval(timer);},[open,anchorHandle]);
- useEffect(()=>{if(!open)return;const outside=(e:PointerEvent)=>{const target=e.target as Element;if(panelRef.current?.contains(target)||target.closest('[data-pdf-selection-key], [data-reader-utility], iframe'))return;if(shouldDismiss('outside',pinned))onClose();};const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.stopPropagation();onClose();anchorHandle?.focus();}};document.addEventListener('pointerdown',outside);document.addEventListener('keydown',key);return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',key);};},[open,pinned,onClose,anchorHandle]);
+ useLayoutEffect(()=>{if(!open)return;const update=()=>{const next=anchorHandle?.measure()??null;setLive(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);};update();const timer=window.setInterval(update,180);return()=>clearInterval(timer);},[open,anchorHandle]);
+ useEffect(()=>{if(!open)return;const off=root.current?installStudyDismiss(root.current,()=>pinned,onClose):()=>{};const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.stopPropagation();onClose();anchorHandle?.focus();}};document.addEventListener('keydown',key);return()=>{off();document.removeEventListener('keydown',key);};},[open,pinned,onClose,anchorHandle]);
  const target=anchorHandle?live:anchor;
  const relative=target?{left:target.left-frame.left,right:target.right-frame.left,top:target.top-frame.top,bottom:target.bottom-frame.top}:undefined;
- const automatic=floatingPanelLayout(frame.width,frame.height,{width:explanationPanelWidth,height:explanationPanelHeight},side,relative);
+ const automatic=floatingPanelLayout(frame.width,frame.height,{width:explanationPanelWidth,height:explanationPanelHeight},side,relative,{flow,kind});
  const size=manual?.anchor===anchor&&manual?{...manual.box,width:Math.min(manual.box.width,frame.width),height:Math.min(manual.box.height,frame.height)}:automatic;
  const rect={...size,left:Math.max(0,Math.min(size.left,frame.width-size.width)),top:Math.max(0,Math.min(size.top,frame.height-size.height))};
  useEffect(()=>{

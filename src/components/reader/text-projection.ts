@@ -1,3 +1,4 @@
+import {createStableFlipLayer} from './stable-flip-layer';
 import {createOffsetProjection,type EndpointBias} from './projection-offsets';
 export type OriginalEndpoint=Readonly<{node:Node;offset:number}>;
 export interface OriginalTextAccess {
@@ -11,14 +12,15 @@ export interface OriginalTextAccess {
 export interface TextProjection extends OriginalTextAccess {
  readonly liveRoot:Element;readonly liveDocument:Document;readonly canonicalDocument:Document;readonly epoch:number;
  apply(change:{id:string;originalRange:Range;replacement:string}):void;
- restore(id:string):void;restoreAll():void;occurrenceForLiveRange(range:Range):string|null;
+ pending(change:{id:string;originalRange:Range}):()=>void;
+ restore(id:string,options?:{animate?:boolean}):void;restoreAll():void;occurrenceForLiveRange(range:Range):string|null;
  subscribe(listener:(epoch:number)=>void):()=>void;dispose():void;
 }
 const isRange=(value:Node|Range):value is Range=>'startContainer' in value;
 type TextPair={live:Text;canonical:Text;start:number;end:number};
 
 /** Immutable source snapshot. Display edits preserve every original child and Text identity. */
-export function createTextProjection(liveRoot:Element):TextProjection {
+export function createTextProjection(liveRoot:Element,options:{layout?:'stable'|'reflow'}={}):TextProjection {
  const liveDocument=liveRoot.ownerDocument;
  const canonicalDocument=liveDocument.implementation.createHTMLDocument('');
  const liveToCanonical=new WeakMap<Node,Node>(),canonicalToLive=new WeakMap<Node,Node>();
@@ -42,6 +44,9 @@ export function createTextProjection(liveRoot:Element):TextProjection {
  }
  pair(liveRoot,canonicalRoot);
  const offsets=createOffsetProjection(original);
+ const stable=options.layout==='stable';
+ const layer=stable?createStableFlipLayer(liveRoot):null;
+ const displayOffset=(offset:number,bias:EndpointBias)=>stable?offset:offsets.toDisplay(offset,bias);
  function assertOwned(node:Node,canonical:boolean){
   const root=canonical?canonicalRoot:liveRoot;
   if(node!==root&&!root.contains(node))throw new RangeError('Range is outside its source projection');
@@ -70,8 +75,8 @@ export function createTextProjection(liveRoot:Element):TextProjection {
   assertOwned(point.node,false);
   // Element child offsets are structural and remain exact; Text offsets can span an atom.
   const paired=liveToCanonical.get(point.node);
-  if(point.node.nodeType!==3&&paired)return {node:paired,offset:point.offset};
-  const offset=offsets.toOriginal(rawOffset(point,false),bias),pair=pairs.find(p=>p.live===point.node);
+  if(point.node.nodeType!==3&&paired)return {node:paired,offset:Array.from(point.node.childNodes).slice(0,point.offset).filter(n=>liveToCanonical.has(n)).length};
+  const offset=stable?rawOffset(point,false):offsets.toOriginal(rawOffset(point,false),bias),pair=pairs.find(p=>p.live===point.node);
   // Preserve an exact node-boundary identity instead of choosing the preceding block.
   if(pair&&offset>=pair.start&&offset<=pair.end)return {node:pair.canonical,offset:offset-pair.start};
   return pointAt(offset,true,bias);
@@ -93,20 +98,24 @@ export function createTextProjection(liveRoot:Element):TextProjection {
    if(live){const r=liveDocument.createRange();r.setStart(live,canonical.startOffset);r.collapse(true);return [r];}
   }
   const {start,end}=originalBounds(range);
-  const a=pointAt(offsets.toDisplay(start,'before'),false,'after');
+  const a=pointAt(displayOffset(start,'before'),false,'after');
   let first=a;
   // A source caret has one endpoint. Opposite boundary biases otherwise move its
   // end into the preceding block, and Range.setEnd silently collapses it there.
   if(range.collapsed){
-   const canonical=originalRange(range),owner=pairs.find(p=>p.canonical===canonical.startContainer),display=offsets.toDisplay(start,'before');
+   const canonical=originalRange(range),owner=pairs.find(p=>p.canonical===canonical.startContainer),display=displayOffset(start,'before');
    if(owner){const prefix=pairs.slice(0,pairs.indexOf(owner)).reduce((sum,p)=>sum+p.live.length,0);if(display>=prefix&&display<=prefix+owner.live.length)first={node:owner.live,offset:display-prefix};}
   }
-  const b=range.collapsed?first:pointAt(offsets.toDisplay(end,'after'),false,'before');
+  const b=range.collapsed?first:pointAt(displayOffset(end,'after'),false,'before');
   const r=liveDocument.createRange();r.setStart(first.node,first.offset);r.setEnd(b.node,b.offset);return [r];
  }
  function render(){
   // Build all new fragments first; there is no partially applied cross-inline occurrence.
   const changes=offsets.changes();
+  if(layer){
+   layer.set(changes.map(c=>{const a=pointAt(c.start,false,'after'),b=pointAt(c.end,false,'before'),range=liveDocument.createRange();range.setStart(a.node,a.offset);range.setEnd(b.node,b.offset);return {id:c.id,range,replacement:c.replacement};}));
+   epoch++;for(const notify of listeners)notify(epoch);return;
+  }
   const strings=pairs.map(p=>{
    let cursor=p.start,value='';
    for(const c of changes){
@@ -136,15 +145,16 @@ export function createTextProjection(liveRoot:Element):TextProjection {
    if(disposed)throw new Error('Projection disposed');
    const {start,end}=originalBounds(range);offsets.apply({id,start,end,replacement});render();
   },
-  restore(id){if(!disposed&&offsets.changes().some(c=>c.id===id)){offsets.restore(id);render();}},
+  pending({id,originalRange:range}){if(disposed||!layer)return()=>{};return layer.pending({id,range:projectedRanges(range)[0]});},
+  restore(id,options){if(!disposed&&offsets.changes().some(c=>c.id===id)){layer?.restore(id,options?.animate);offsets.restore(id);render();}},
   restoreAll(){if(!disposed&&offsets.changes().length){offsets.restoreAll();render();}},
   occurrenceForLiveRange(range){
    if(range.startContainer.ownerDocument!==liveDocument)return null;
    const a=rawOffset({node:range.startContainer,offset:range.startOffset},false),b=rawOffset({node:range.endContainer,offset:range.endOffset},false);
-   const c=offsets.at(a);if(!c)return null;
-   const end=offsets.toDisplay(c.end,'after');return b<=end?c.id:null;
+   const c=stable?offsets.changes().find(c=>a>=c.start&&a<c.end):offsets.at(a);if(!c)return null;
+   const end=displayOffset(c.end,'after');return b<=end?c.id:null;
   },
   subscribe(listener){if(disposed)return ()=>{};listeners.add(listener);return ()=>{listeners.delete(listener);};},
-  dispose(){if(disposed)return;offsets.restoreAll();render();listeners.clear();disposed=true;},
+  dispose(){if(disposed)return;offsets.restoreAll();render();layer?.dispose();listeners.clear();disposed=true;},
  };
 }

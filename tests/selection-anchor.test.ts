@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {createAnchorHandle} from '@/components/reader/selection-anchor';
+import {createAnchorHandle,wordLookupBounds} from '@/components/reader/selection-anchor';
 import {floatingPanelLayout} from '@/components/reader/floating-study-layout';
 it('keeps the whole paragraph clear for consecutive word clicks, including iframe coordinates',()=>{
  const element={isConnected:true,getBoundingClientRect:()=>({left:80,right:640,top:140,bottom:440,width:560,height:300}),ownerDocument:{defaultView:{frameElement:{getBoundingClientRect:()=>({left:20,top:40})}},createRange:()=>{throw Error('word range should not set paragraph clearance');}}} as unknown as HTMLElement;
@@ -27,3 +27,5 @@ it('remeasures the source span after each projection epoch instead of retaining 
   p.restoreAll();expect(handle.measure()?.left).toBe(4);handle.dispose();
  }finally{off();p.dispose();}
 });
+
+it('uses reading-line clearance for PDF and selected-word vertical EPUB lookup',()=>{expect(wordLookupBounds('PDF','paginated')).toBe('line');expect(wordLookupBounds('EPUB','vertical')).toBe('line');expect(wordLookupBounds('EPUB','paginated')).toBe('paragraph');});

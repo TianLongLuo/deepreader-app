@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 const require=createRequire(import.meta.url);
 const {build}=require('esbuild'),JSZip=require('jszip'),postcss=require('postcss'),tailwind=require('@tailwindcss/postcss');
-const root=process.cwd(),output=path.join(root,'.superpowers/sdd/2026-10-03-reader-viewport-flow-semantic-flip/browser-fixture');
+const root=process.cwd(),output=process.env.READER_QA_OUTPUT||path.join(root,'.superpowers/sdd/2026-10-03-reader-viewport-flow-semantic-flip/browser-fixture');
 const arg=process.argv.indexOf('--port'),port=arg<0?3018:Number(process.argv[arg+1]);
 if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Use a local unprivileged port');
 await fs.mkdir(output,{recursive:true});
@@ -44,7 +44,7 @@ function pdf(){
  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');let text='%PDF-1.4\n',offsets=[0];objects.forEach((object,i)=>{offsets.push(Buffer.byteLength(text));text+=`${i+1} 0 obj\n${object}\nendobj\n`;});const xref=Buffer.byteLength(text);text+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;return Buffer.from(text);
 }
 const pdfBytes=pdf(),readingStates=new Map();let fault='';
-const stats={meaning:[],flips:[],dictionary:0,explain:0,writes:[],reading:0,canceled:0,active:0,maxActive:0,invalid:0};
+const stats={meaning:[],flips:[],dictionary:0,pos:0,explain:0,writes:[],reading:0,canceled:0,active:0,maxActive:0,invalid:0};
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function ndjson(res,value,units=[],answer=''){
@@ -69,6 +69,7 @@ const server=http.createServer(async(req,res)=>{
   let body='';for await(const chunk of req){body+=chunk;if(body.length>140000)throw new Error('Fixture body too large');}const input=body?JSON.parse(body):{};
   if(pathname.endsWith('/reading')){let state=readingStates.get(pathname);if(!state){state={entries:[],progress:null};readingStates.set(pathname,state);}const entries=state.entries;if(req.method==='PATCH'){state.progress=input;stats.writes.push(input);return json(res,{ok:true});}if(req.method==='POST'){if(input.kind){const item={id:randomUUID(),...input,createdAt:new Date().toISOString()};entries.push(item);return json(res,{item});}return json(res,{ok:true});}return json(res,{items:entries,progress:state.progress});}
   if(pathname==='/api/study/exposures')return json(res,{ok:true});
+  if(pathname==='/api/dictionary/pos'){stats.pos++;return json(res,{parts:[url.searchParams.get('word')==='waited'?'verb':'noun']});}
   if(pathname==='/api/dictionary'){stats.dictionary++;return json(res,{word:url.searchParams.get('word'),phonetic:'/ˈfɪkstʃə/',meanings:[{partOfSpeech:'noun',definitions:[{definition:'A local QA definition.'}]}],provider:'fixture'});}
   if(pathname==='/api/semantic-flip'){
    stats.flips.push(input);if(input.sourceText.slice(input.start,input.end)!==input.targetWord)throw new Error('Invalid source offsets');

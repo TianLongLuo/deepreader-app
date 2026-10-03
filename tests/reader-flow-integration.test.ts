@@ -86,15 +86,26 @@ it('replaces one occurrence, keeps copy canonical and Alt+Enter restores a whole
  const view=mount();await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
  fireEvent.click(screen.getByLabelText('语义翻牌'));const doc=fixture.instances[0].content.document,p=doc.querySelector('p')!,range=doc.createRange();range.setStart(p.firstChild!,0);range.setEnd(p.firstChild!,3);
  (doc as any).caretRangeFromPoint=()=>range;Object.defineProperty(doc.defaultView!.Range.prototype,'getClientRects',{configurable:true,value:()=>[{left:0,right:100,top:0,bottom:40,width:100,height:40}]});
- fireEvent.click(p,{clientX:10,clientY:10});await waitFor(()=>expect(p.textContent).toBe('a feline animal after CAT. Book paragraph with sufficient prose.'));await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
+ fireEvent.click(p,{clientX:10,clientY:10});await waitFor(()=>expect(doc.querySelector('[data-semantic-replacement]')?.getAttribute('data-semantic-replacement')).toBe('a feline animal'));expect(p.textContent).toBe('CAT after CAT. Book paragraph with sufficient prose.');await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
  expect(view.container.querySelector('.sr-only [lang=en]')?.textContent).toBe('CAT');
- const translated=doc.createRange();translated.setStart(p.firstChild!,0);translated.setEnd(p.firstChild!,15);doc.defaultView!.getSelection()!.removeAllRanges();doc.defaultView!.getSelection()!.addRange(translated);
+ const translated=doc.createRange();translated.setStart(p.firstChild!,0);translated.setEnd(p.firstChild!,3);doc.defaultView!.getSelection()!.removeAllRanges();doc.defaultView!.getSelection()!.addRange(translated);
  const setData=vi.fn(),copy=new doc.defaultView!.Event('copy',{bubbles:true,cancelable:true});Object.defineProperty(copy,'clipboardData',{value:{setData}});doc.dispatchEvent(copy);expect(setData).toHaveBeenCalledWith('text/plain','CAT');expect(copy.defaultPrevented).toBe(true);
- fireEvent.keyDown(p,{key:'Enter',altKey:true});await waitFor(()=>expect(p.textContent).toBe('CAT after CAT. Book paragraph with sufficient prose.'));expect(calls.filter(u=>u==='/api/semantic-flip')).toHaveLength(1);expect(calls.filter(u=>/dictionary|explain-text|reading-assistant/.test(u))).toEqual([]);
+ fireEvent.keyDown(p,{key:'Enter',altKey:true});await waitFor(()=>expect(doc.querySelector('[data-semantic-replacement]')).toBeNull());expect(calls.filter(u=>u==='/api/semantic-flip')).toHaveLength(1);expect(calls.filter(u=>/dictionary|explain-text|reading-assistant/.test(u))).toEqual([]);
 });
 
 it('does not feed href navigation into a second ReactReader display owner',async()=>{
  const view=mount();await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
  fireEvent.click(screen.getByLabelText('打开目录与书签'));fireEvent.click(screen.getByRole('button',{name:'Test chapter'}));await act(async()=>{await new Promise(r=>setTimeout(r,80));});
  expect(fixture.props).not.toContain('ch1.xhtml');
+});
+it('removes the legacy paragraph title and hover treatment while semantic mode is enabled',async()=>{
+ const view=mount();await waitFor(()=>expect(view.container.querySelector('[data-reading-phase]')?.getAttribute('data-reading-phase')).toBe('ready'));
+ const doc=fixture.instances[0].content.document,p=doc.querySelector('p')!;
+ expect(p.title).toContain('点击单词');
+ fireEvent.change(screen.getByLabelText('阅读方式'),{target:{value:'vertical'}});await waitFor(()=>expect(fixture.instances).toHaveLength(2));
+ fireEvent.click(screen.getByLabelText('语义翻牌'));
+ const current=fixture.instances[1].content.document;await waitFor(()=>expect(current.querySelector('p')!.title).toBe(''));
+ expect(current.documentElement.dataset.readerSemanticFlip).toBe('true');
+ fireEvent.mouseEnter(current.querySelector('p')!);expect(current.querySelector('p')!.dataset.readerHovered).not.toBe('true');
+ fireEvent.click(screen.getByLabelText('语义翻牌'));await waitFor(()=>expect(current.querySelector('p')!.title).toContain('点击单词'));
 });

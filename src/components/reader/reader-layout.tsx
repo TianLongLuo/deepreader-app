@@ -1,6 +1,7 @@
 'use client';
+import {createSemanticHover} from './semantic-hover';
 import { viewportAnchor, type StudyAnchor } from './floating-study-layout';
-import {createAnchorHandle,type AnchorHandle} from './selection-anchor';
+import {createAnchorHandle,wordLookupBounds,type AnchorHandle} from './selection-anchor';
 import {originalText,originalRange,projectionFor,projectedRanges,readOriginalSelection} from './original-text';
 import {collectMeaningSources,sourceRange,type MeaningTextSource} from './meaning-text-source';
 import {findEpubSourceElement,occurrenceId,type Occurrence} from './source-position';
@@ -248,12 +249,12 @@ const INTERACTIVE_PARAGRAPH_CSS = `
       transform 160ms ease;
   }
 
-  [data-reader-interactive='true'][data-reader-hovered='true'] {
+  html:not([data-reader-semantic-flip='true']) [data-reader-interactive='true'][data-reader-hovered='true'] {
     background: rgba(0, 122, 255, 0.10) !important;
     box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.24);
   }
 
-  [data-reader-interactive='true'][data-reader-active='true'] {
+  html:not([data-reader-semantic-flip='true']) [data-reader-interactive='true'][data-reader-active='true'] {
     background: rgba(0, 122, 255, 0.16) !important;
     box-shadow:
       inset 0 0 0 1px rgba(234, 88, 12, 0.38),
@@ -1201,7 +1202,7 @@ export default function ReaderLayout({
   const pdfProjections=useRef(new Map<Element,{projection:TextProjection;off:()=>void}>());
   const flipRef=useRef<ReturnType<typeof useSemanticFlip>|null>(null);
   const allProjections=()=>[...(sessionRef.current?.projections()??[]),...Array.from(pdfProjections.current.values(),v=>v.projection)];
-  const ensurePdfProjections=()=>{if(!flipModeRef.current)return;for(const [block,entry] of pdfProjections.current)if(!block.isConnected){entry.off();entry.projection.dispose();pdfProjections.current.delete(block);}containerRef.current?.querySelectorAll('[data-pdf-selection-key]').forEach(block=>{if(!pdfProjections.current.has(block)){const projection=createTextProjection(block);pdfProjections.current.set(block,{projection,off:registerOriginalText(projection)});}});};
+  const ensurePdfProjections=()=>{if(!flipModeRef.current)return;for(const [block,entry] of pdfProjections.current)if(!block.isConnected){entry.off();entry.projection.dispose();pdfProjections.current.delete(block);}containerRef.current?.querySelectorAll('[data-pdf-selection-key]').forEach(block=>{if(!pdfProjections.current.has(block)){const projection=createTextProjection(block,{layout:'stable'});pdfProjections.current.set(block,{projection,off:registerOriginalText(projection)});}});};
   const resolveFlip=(c:CompletedFlip):{projection:TextProjection;range:Range}|null=>{
     if(c.position.kind==='pdf'){ensurePdfProjections();for(const [block,entry] of pdfProjections.current){if((block as HTMLElement).dataset.pdfSelectionKey===c.position.selectionKey){try{return {projection:entry.projection,range:sourceRangeAt(entry.projection.canonicalNode(block)!,c.position.start,c.position.end)};}catch{return null;}}}return null;}
     const session=sessionRef.current;if(!session)return null;
@@ -1209,15 +1210,11 @@ export default function ReaderLayout({
   };
   const boundFlips=useRef(new WeakMap<TextProjection,Set<string>>());
   const bindFlip=async(c:CompletedFlip)=>{if(!flipModeRef.current)return;const found=resolveFlip(c);if(!found)return;let ids=boundFlips.current.get(found.projection);if(!ids){ids=new Set();boundFlips.current.set(found.projection,ids);}if(ids.has(c.id))return;found.projection.apply({id:c.id,originalRange:found.range,replacement:c.replacement});ids.add(c.id);};
-  const projectionTransaction=async(edit:()=>void)=>{
-    const session=sessionRef.current;
-    if(document.fileType==='EPUB'&&session){const anchor=restore.lastConfirmed()??initialAnchorRef.current;restore.begin(anchor,'projection');readyRef.current=false;setReadingReady(false);setReadingPhase('restoring');edit();await session.restoreTo(anchor,'projection');return;}
-    const scroll=containerRef.current?.querySelector<HTMLElement>('[data-pdf-text-scroll]'),blocks=Array.from(containerRef.current?.querySelectorAll<HTMLElement>('[data-pdf-selection-key]')??[]),top=scroll?.getBoundingClientRect().top??0,anchor=blocks.find(b=>b.getBoundingClientRect().bottom>top),before=anchor?.getBoundingClientRect().top;
-    readyRef.current=false;setReadingReady(false);edit();await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));if(scroll&&anchor?.isConnected&&before!==undefined)scroll.scrollTop+=anchor.getBoundingClientRect().top-before;readyRef.current=true;setReadingReady(true);notifyGeometry();
-  };
-  const semanticFlip=useSemanticFlip({enabled:effectiveFlip,ready:readingReady,domain:flipDomain,budget:aiBudget,inputFor:o=>flipInputFor(o,flipDomainRef.current),
+  // Stable glyph-box painting changes neither layout nor scroll. Never seek/reflow on a flip.
+  const projectionTransaction=async(edit:()=>void)=>{edit();notifyGeometry();};
+  const semanticFlip=useSemanticFlip({enabled:effectiveFlip,ready:readingReady,domain:flipDomain,budget:aiBudget,inputFor:o=>flipInputFor(o,flipDomainRef.current),pending:o=>{const found=resolveFlip({...o,replacement:o.word});return found?.projection.pending({id:o.id,originalRange:found.range})??(()=>{});},
     apply:async(o,replacement)=>{if(!flipModeRef.current)return;await projectionTransaction(()=>{const found=resolveFlip({...o,replacement});if(found){found.projection.apply({id:o.id,originalRange:found.range,replacement});let ids=boundFlips.current.get(found.projection);if(!ids){ids=new Set();boundFlips.current.set(found.projection,ids);}ids.add(o.id);}});},
-    restore:async id=>{await projectionTransaction(()=>{for(const p of allProjections()){p.restore(id);boundFlips.current.get(p)?.delete(id);}});},
+    restore:async(id,animate)=>{await projectionTransaction(()=>{for(const p of allProjections()){p.restore(id,{animate});boundFlips.current.get(p)?.delete(id);}});},
     restoreAll:async()=>{if(!allProjections().some(p=>(boundFlips.current.get(p)?.size??0)>0))return;await projectionTransaction(()=>{for(const p of allProjections())p.restoreAll();boundFlips.current=new WeakMap();});},
     isVisible:c=>{const found=resolveFlip(c),geometry=meaningGeometry();if(!found||!geometry)return false;const frame=found.projection.liveDocument.defaultView?.frameElement?.getBoundingClientRect();return found.projection.projectedRanges(found.range).some(r=>Array.from(r.getClientRects()).some(rect=>{const left=rect.left+(frame?.left??0),top=rect.top+(frame?.top??0);return left<geometry.visible.right&&left+rect.width>geometry.visible.left&&top<geometry.visible.bottom&&top+rect.height>geometry.visible.top;}));},
   });flipRef.current=semanticFlip;
@@ -1225,8 +1222,22 @@ export default function ReaderLayout({
   const flipClick=(doc:Document,x:number,y:number,within:Element,contents?:EpubContents)=>{if(!readyRef.current||!canFlipPointer(doc))return;const hit=wordAtPoint(doc,x,y,within);if(!hit)return;const o=occurrenceFrom(hit.originalRange,contents);if(o)flipRef.current?.click(o);};
   const installFlipEvents=(doc:Document,contents?:EpubContents)=>{
     const copy=(event:ClipboardEvent)=>{if(!flipModeRef.current||!event.clipboardData)return;const selection=doc.defaultView?.getSelection();if(!selection?.rangeCount||selection.isCollapsed)return;try{event.clipboardData.setData('text/plain',readOriginalSelection(selection.getRangeAt(0)));event.preventDefault();}catch{/* Preserve normal copy if selection is outside prose. */}};
-    const key=(event:KeyboardEvent)=>{if(!flipModeRef.current)return;if(event.key==='Escape'){event.preventDefault();flipRef.current?.escape();return;}if(event.key!=='Enter'||!event.altKey||!readyRef.current)return;const selection=doc.defaultView?.getSelection();if(!selection?.rangeCount||selection.isCollapsed)return;const range=selection.getRangeAt(0),projection=projectionFor(range.startContainer),replacement=projection?.occurrenceForLiveRange(range);if(replacement){event.preventDefault();flipRef.current?.restoreOccurrence(replacement);return;}const o=occurrenceFrom(range,contents);if(!o||!isSingleOriginalWord(o.word))return;const input=flipInputFor(o,flipDomainRef.current);try{semanticFlipRequestSchema.parse(input);}catch{return;}event.preventDefault();flipRef.current?.click(o);};
-    doc.addEventListener('copy',copy);doc.addEventListener('keydown',key);return()=>{doc.removeEventListener('copy',copy);doc.removeEventListener('keydown',key);};
+    const key=(event:KeyboardEvent)=>{if(!flipModeRef.current)return;if(event.key==='Escape'){event.preventDefault();flipRef.current?.escape();return;}if(event.key!=='Enter'||!event.altKey||!readyRef.current)return;const selection=doc.defaultView?.getSelection();if(!selection?.rangeCount||selection.isCollapsed)return;const range=selection.getRangeAt(0),projection=projectionFor(range.startContainer),replacement=projection?.occurrenceForLiveRange(range);if(replacement){event.preventDefault();flipRef.current?.restoreOccurrence(replacement);return;}const o=occurrenceFrom(range,contents);if(!o||!isSingleOriginalWord(o.word))return;const input=flipInputFor(o,flipDomainRef.current);try{semanticFlipRequestSchema.parse(input);}catch{return;}event.preventDefault();flipRef.current?.click(o,{animate:false});};
+    const hover=createSemanticHover(doc);let longTimer:ReturnType<typeof setTimeout>|undefined,press:{x:number;y:number}|undefined,consumed=false;
+    const hitAt=(event:PointerEvent)=>{const target=event.target as Element|null,block=target?.closest('[data-reader-interactive], [data-pdf-selection-key]');if(!block)return null;const hit=wordAtPoint(doc,event.clientX,event.clientY,block);if(!hit)return null;const id=projectionFor(hit.range.startContainer)?.occurrenceForLiveRange(hit.range);const replacement=id?flipRef.current?.completed().find(c=>c.id===id)?.replacement:undefined;return {word:hit.word,rect:hit.rect,language:flipDomainRef.current.sourceLanguage,replacement};};
+    const move=(event:PointerEvent)=>{
+      if(press&&Math.hypot(event.clientX-press.x,event.clientY-press.y)>8){clearTimeout(longTimer);press=undefined;hover.clear();}
+      if(!flipModeRef.current||event.pointerType==='touch'){if(!press&&!consumed)hover.clear();return;}
+      const hit=hitAt(event);if(hit)hover.show(hit);else hover.clear();
+    };
+    const down=(event:PointerEvent)=>{clearTimeout(longTimer);consumed=false;hover.clear();if(!flipModeRef.current||event.pointerType!=='touch')return;const hit=hitAt(event);if(!hit?.replacement)return;press={x:event.clientX,y:event.clientY};longTimer=setTimeout(()=>{consumed=true;hover.show(hit,{lookupPOS:false});},450);};
+    const up=()=>{clearTimeout(longTimer);press=undefined;};
+    const cancel=()=>{up();consumed=false;hover.clear();};
+    const click=(event:MouseEvent)=>{if(consumed){consumed=false;event.preventDefault();event.stopImmediatePropagation();}};
+    const context=(event:MouseEvent)=>{if(consumed)event.preventDefault();};
+    const leave=()=>{if(!press&&!consumed)hover.clear();};
+    doc.addEventListener('reader-mode-change',cancel);doc.addEventListener('copy',copy);doc.addEventListener('keydown',key);doc.addEventListener('pointermove',move);doc.addEventListener('pointerdown',down);doc.addEventListener('pointerup',up);doc.addEventListener('pointercancel',cancel);doc.addEventListener('click',click,true);doc.addEventListener('contextmenu',context);doc.addEventListener('pointerout',leave);doc.addEventListener('scroll',cancel,true);
+    return()=>{cancel();hover.dispose();doc.removeEventListener('reader-mode-change',cancel);doc.removeEventListener('copy',copy);doc.removeEventListener('keydown',key);doc.removeEventListener('pointermove',move);doc.removeEventListener('pointerdown',down);doc.removeEventListener('pointerup',up);doc.removeEventListener('pointercancel',cancel);doc.removeEventListener('click',click,true);doc.removeEventListener('contextmenu',context);doc.removeEventListener('pointerout',leave);doc.removeEventListener('scroll',cancel,true);};
   };
 
   const renditionRef = useRef<RenditionLike | null>(null);
@@ -1309,6 +1320,10 @@ export default function ReaderLayout({
   }, [clearActiveParagraph, clearUnderlineAnnotations]);
 
   useEffect(()=>{
+    for(const doc of [...(sessionRef.current?.contents().map(c=>c.document)??[]),globalThis.document]){
+      doc.documentElement.dataset.readerSemanticFlip=String(effectiveFlip);doc.dispatchEvent(new Event('reader-mode-change'));
+      doc.querySelectorAll<HTMLElement>('[data-reader-interactive]').forEach(el=>{el.title=effectiveFlip?'':'点击单词查词；点击段落边缘或按 Enter 分析整段';if(effectiveFlip)setParagraphState(el,{hovered:false,active:false});});
+    }
     if(effectiveFlip){clearUnderlineAnnotations();closeExplanationPanel();setToolsOpen(false);setShowDetailed(false);setUtilityOpen(false);setToolSelection(null);useReaderStore.getState().setStudyPinned(false);sessionRef.current?.setProjectionEnabled(true);ensurePdfProjections();notifyGeometry();}
     else {sessionRef.current?.setProjectionEnabled(false);for(const entry of pdfProjections.current.values()){entry.off();entry.projection.dispose();}pdfProjections.current.clear();boundFlips.current=new WeakMap();notifyGeometry();}
   },[effectiveFlip,pdfTextState.status]);
@@ -1447,7 +1462,7 @@ export default function ReaderLayout({
       if (selected && /\s/.test(selected)) {openPdfParagraph(paragraph,event.currentTarget);return;}
       if (selected || word) {
         const index=pdfTextState.paragraphs.indexOf(paragraph);
-        openWord(selected || word!.word,getPdfSelectionKey(document.id,paragraph.id),paragraph.text,event.clientX,pdfTextState.paragraphs[index-1]?.text,pdfTextState.paragraphs[index+1]?.text,viewportAnchor(event.currentTarget.getBoundingClientRect()),createAnchorHandle(event.currentTarget,word?.range,undefined,'paragraph'));
+        openWord(selected || word!.word,getPdfSelectionKey(document.id,paragraph.id),paragraph.text,event.clientX,pdfTextState.paragraphs[index-1]?.text,pdfTextState.paragraphs[index+1]?.text,viewportAnchor(event.currentTarget.getBoundingClientRect()),createAnchorHandle(event.currentTarget,word?.range,undefined,word?wordLookupBounds('PDF',flowRef.current):'paragraph'));
         return;
       }
       openPdfParagraph(paragraph, event.currentTarget);
@@ -1511,8 +1526,9 @@ export default function ReaderLayout({
   }, [document.fileType, document.id, pdfTextState.paragraphs]);
 
   const installInteractiveParagraphs = useCallback((contents: EpubContents,own:(off:()=>void)=>void=()=>{}) => {
+    contents.document.documentElement.dataset.readerSemanticFlip=String(flipModeRef.current);
     contents.addStylesheetCss(
-      INTERACTIVE_PARAGRAPH_CSS + ' ::highlight(reader-hover-word) {background-color:#c7dfff;color:#12243b;} [data-reader-interactive] {position:relative;} [data-reader-interactive]::before {content: "≡"; position:absolute;right:100%;top:0; padding:0 4px;font-size:12px;opacity:0;cursor:pointer;} [data-reader-interactive]:hover::before,[data-reader-interactive]:focus::before {opacity:.6;}',
+      INTERACTIVE_PARAGRAPH_CSS + ' ::highlight(reader-hover-word) {background-color:#c7dfff;color:#12243b;} [data-reader-interactive] {position:relative;} [data-reader-interactive]::before {content: "≡"; position:absolute;right:100%;top:0; padding:0 4px;font-size:12px;opacity:0;cursor:pointer;} html:not([data-reader-semantic-flip=true]) [data-reader-interactive]:hover::before,html:not([data-reader-semantic-flip=true]) [data-reader-interactive]:focus::before {opacity:.6;}',
       'reader-paragraph-interaction'
     );
 
@@ -1537,12 +1553,13 @@ export default function ReaderLayout({
       const listen=<K extends keyof HTMLElementEventMap>(name:K,fn:(event:HTMLElementEventMap[K])=>void)=>{element.addEventListener(name,fn);own(()=>element.removeEventListener(name,fn));};
       own(()=>{delete element.dataset.readerInteractive;});
       element.tabIndex = 0;
-      element.title = '点击单词查词；点击段落边缘或按 Enter 分析整段';
+      element.title = flipModeRef.current?'':'点击单词查词；点击段落边缘或按 Enter 分析整段';
       listen('keydown',event=>{if(flipModeRef.current)return;if(event.key==='Enter'&&event.target===element){event.preventDefault();handleParagraphClick(element,contents);}});
       element.dataset.readerInteractive = 'true';
       setParagraphState(element, { hovered: false, active: false });
 
       listen('mouseenter', () => {
+        if(flipModeRef.current){setParagraphState(element,{hovered:false,active:false});return;}
         if (activeElementRef.current === element) {
           setParagraphState(element, { hovered: false, active: true });
           return;
@@ -1576,7 +1593,7 @@ export default function ReaderLayout({
         if(hit){
           const frame=(contents.window.frameElement as Element|null)?.getBoundingClientRect();
           const wordCfi=contents.cfiFromRange(hit.originalRange);
-          openWord(hit.word,wordCfi,sourceText(element),event.clientX+(frame?.left||0),sourceText(element.previousElementSibling),sourceText(element.nextElementSibling),viewportAnchor(element.getBoundingClientRect(),frame),createAnchorHandle(element,hit.originalRange,()=>findEpubSourceElement(epubContentsRef.current,wordCfi),'paragraph'));
+          openWord(hit.word,wordCfi,sourceText(element),event.clientX+(frame?.left||0),sourceText(element.previousElementSibling),sourceText(element.nextElementSibling),viewportAnchor(element.getBoundingClientRect(),frame),createAnchorHandle(element,hit.originalRange,()=>findEpubSourceElement(epubContentsRef.current,wordCfi),wordLookupBounds('EPUB',flowRef.current)));
           return;
         }
         handleParagraphClick(element, contents);
@@ -1963,7 +1980,7 @@ export default function ReaderLayout({
           const range=selected.getRangeAt(0),ancestor=range.commonAncestorContainer,parent=ancestor.nodeType===1?ancestor as Element:ancestor.parentElement,block=parent?.closest('p,li,blockquote') as HTMLElement|null;
           if(/\s/.test(text)&&block){handleParagraphClick(block,contents);return;}
           const rect=range.getBoundingClientRect(),frame=contents.window.frameElement?.getBoundingClientRect(),cfi=contents.cfiFromRange(originalRange(range));
-          openWord(text,cfi,sourceText(block)||sourceText(parent),rect.left+(frame?.left||0),sourceText(block?.previousElementSibling),sourceText(block?.nextElementSibling),viewportAnchor(block?.getBoundingClientRect()??rect,frame),block?createAnchorHandle(block,range,()=>findEpubSourceElement(epubContentsRef.current,cfi),'paragraph'):undefined);
+          openWord(text,cfi,sourceText(block)||sourceText(parent),rect.left+(frame?.left||0),sourceText(block?.previousElementSibling),sourceText(block?.nextElementSibling),viewportAnchor(block?.getBoundingClientRect()??rect,frame),block?createAnchorHandle(block,range,()=>findEpubSourceElement(epubContentsRef.current,cfi),wordLookupBounds('EPUB',flowRef.current)):undefined);
         };
         contents.document.addEventListener('pointerdown',down,true);contents.document.addEventListener('mouseup',up);
         own(()=>contents.document.removeEventListener('pointerdown',down,true));own(()=>contents.document.removeEventListener('mouseup',up));
@@ -2287,7 +2304,7 @@ export default function ReaderLayout({
       data-reading-phase={document.fileType==='EPUB'?readingPhase:readingReady?'ready':'loading'}
       className={`${immersive
         ? 'fixed inset-0 z-[60] flex flex-col w-full overflow-hidden'
-        : 'relative flex flex-col h-screen w-full overflow-hidden'} ${theme === 'dark'
+        : 'relative flex flex-col h-[100dvh] w-full overflow-hidden'} ${theme === 'dark'
         ? 'bg-[#171717]'
         : 'bg-background'} ${themeClasses[theme]}`}
     >
@@ -2453,7 +2470,7 @@ export default function ReaderLayout({
         onDelete={async id=>{await readingRequest('/api/documents/'+document.id+'/reading?entryId='+encodeURIComponent(id),{method:'DELETE'});setEntries(items=>items.filter(item=>item.id!==id));}}
         onJump={jumpReading} onDetailed={()=>{if(toolSelection)setSelectedParagraph({key:toolSelection.location,text:toolSelection.text,preferredPanelSide:'right',anchorY:100,paragraphBounds:{left:24,top:80,right:320,bottom:160}});setToolsOpen(false);setShowDetailed(true);}} onRestoreSelection={setToolSelection}
         onQuote={quote=>{const content=epubContentsRef.current.find(c=>originalText(c.document.body).includes(quote));if(content){const node=Array.from(content.document.querySelectorAll('p,li')).find(e=>originalText(e).includes(quote));node?.scrollIntoView({block:'center'});if(node) {(node as HTMLElement).style.backgroundColor='rgba(0,122,255,.15)';}}else{const paragraph=pdfTextState.paragraphs.find(p=>p.text.includes(quote));if(paragraph)jumpToPdfBookmark(getPdfSelectionKey(document.id,paragraph.id));}}}/></ReaderUtilities>}
-      <StudyDock kind={showDetailed?'paragraph':'word'} anchorHandle={toolSelection?.anchorHandle} onReturnToSource={()=>toolSelection&&jumpReading(toolSelection.location)} anchor={toolSelection?.anchor} open={!effectiveFlip&&(toolsOpen || Boolean(selectedParagraph && showDetailed))} side={(showDetailed?selectedParagraph?.preferredPanelSide:toolSelection?.side)||'right'} title={showDetailed?'段落结构与语法':'语境查词 · 阅读工具'} onClose={()=>{setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}} panel={effectiveFlip?null:selectedParagraph && showDetailed ? (
+      <StudyDock flow={document.fileType==='PDF'?'vertical':flow} kind={showDetailed?'paragraph':'word'} anchorHandle={toolSelection?.anchorHandle} onReturnToSource={()=>toolSelection&&jumpReading(toolSelection.location)} anchor={toolSelection?.anchor} open={!effectiveFlip&&(toolsOpen || Boolean(selectedParagraph && showDetailed))} side={(showDetailed?selectedParagraph?.preferredPanelSide:toolSelection?.side)||'right'} title={showDetailed?'段落结构与语法':'语境查词 · 阅读工具'} onClose={()=>{setToolsOpen(false);setShowDetailed(false);closeExplanationPanel();}} panel={effectiveFlip?null:selectedParagraph && showDetailed ? (
 <ExplanationPanel
                 documentId={document.id}
                 text={selectedParagraph.text.slice(0,20000)}

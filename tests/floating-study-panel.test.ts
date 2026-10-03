@@ -34,3 +34,13 @@ it('aligns with the clicked word instead of the top window edge',()=>{
  const p=floatingPanelLayout(1400,900,{width:360,height:400},'right',{left:500,right:550,top:350,bottom:375});
  expect(p.left).toBe(562);expect(p.top).toBe(350);
 });
+it('uses a compact phone bottom card in vertical flow without covering the clicked line',()=>{
+ const anchor={left:24,right:366,top:230,bottom:265};
+ const p=floatingPanelLayout(390,650,{width:600,height:700},'right',anchor,{flow:'vertical',kind:'word'});
+ expect(p.height).toBeLessThanOrEqual(260);expect(p.top+p.height).toBe(638);expect(intersects(p,anchor)).toBe(false);
+});
+it('keeps a full-width vertical reading line clear even when there is little paragraph whitespace',()=>{
+ const anchor={left:80,right:1120,top:300,bottom:350};
+ const p=floatingPanelLayout(1200,800,{width:440,height:600},'left',anchor,{flow:'vertical',kind:'word'});
+ expect(intersects(p,anchor)).toBe(false);expect(p.height).toBeLessThanOrEqual(360);expect(p.top-anchor.bottom).toBeGreaterThanOrEqual(20);
+});

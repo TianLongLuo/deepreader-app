@@ -6,7 +6,7 @@ import {createSemanticFlipController,type CompletedFlip,type FlipSessionDomain} 
 import type {Occurrence} from '@/components/reader/source-position';
 import type {createReaderAIClientBudget} from '@/components/reader/reader-ai-budget';
 import {meaningRetryAfterMs} from '@/components/reader/meaning-group-queue';
-type Input={enabled:boolean;ready:boolean;domain:FlipSessionDomain;budget:ReturnType<typeof createReaderAIClientBudget>;inputFor:(o:Occurrence)=>SemanticFlipInput;apply:(o:Occurrence,replacement:string)=>Promise<void>;restore:(id:string)=>Promise<void>;restoreAll:()=>Promise<void>;isVisible?:(c:CompletedFlip)=>boolean};
+type Input={enabled:boolean;ready:boolean;domain:FlipSessionDomain;budget:ReturnType<typeof createReaderAIClientBudget>;inputFor:(o:Occurrence)=>SemanticFlipInput;apply:(o:Occurrence,replacement:string)=>Promise<void>;restore:(id:string,animate?:boolean)=>Promise<void>;restoreAll:()=>Promise<void>;pending?:(o:Occurrence)=>()=>void;isVisible?:(c:CompletedFlip)=>boolean};
 export function useSemanticFlip(input:Input){
  const latest=useRef(input);latest.current=input;const controller=useRef<ReturnType<typeof createSemanticFlipController>|null>(null),retryAction=useRef(()=>{});
  const [state,setState]=useState({pending:0,message:'',lastChange:null as {original:string;replacement:string}|null});
@@ -24,7 +24,7 @@ export function useSemanticFlip(input:Input){
    timer=setTimeout(()=>{reason='';release?.();release=undefined;},delay);
   };
   const current=createSemanticFlipController({domain:input.domain,budget:input.budget,changed,
-   inputFor:o=>latest.current.inputFor(o),apply:(o,r)=>latest.current.apply(o,r),restore:id=>latest.current.restore(id),restoreAll:()=>latest.current.restoreAll(),isVisible:c=>latest.current.isVisible?.(c)??false,
+   inputFor:o=>latest.current.inputFor(o),apply:(o,r)=>latest.current.apply(o,r),restore:(id,animate)=>latest.current.restore(id,animate),pending:input.pending,restoreAll:()=>latest.current.restoreAll(),isVisible:c=>latest.current.isVisible?.(c)??false,
    request:async(value,signal)=>{
     try{
      const response=await fetch('/api/semantic-flip',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(value),signal});
@@ -41,6 +41,6 @@ export function useSemanticFlip(input:Input){
  },[key,input.budget]);
  const enabledBefore=useRef(input.enabled);
  useEffect(()=>{const current=controller.current;if(enabledBefore.current&&!input.enabled)void current?.reset(input.domain);enabledBefore.current=input.enabled;current?.setSuspended(!input.enabled||!input.ready);},[input.enabled,input.ready,key]);
- const actions=useRef({click:(o:Occurrence)=>{if(latest.current.enabled&&latest.current.ready)controller.current?.click(o);},restoreOccurrence:(id:string)=>{if(latest.current.enabled&&latest.current.ready)controller.current?.restoreOccurrence(id);},escape:(id?:string)=>controller.current?.escape(id),completed:()=>controller.current?.completed()??[],rebind:async(bind:(c:CompletedFlip)=>Promise<void>)=>{await controller.current?.rebind(bind);},retry:()=>retryAction.current()});
+ const actions=useRef({click:(o:Occurrence,options?:{animate?:boolean})=>{if(latest.current.enabled&&latest.current.ready)controller.current?.click(o,options);},restoreOccurrence:(id:string)=>{if(latest.current.enabled&&latest.current.ready)controller.current?.restoreOccurrence(id);},escape:(id?:string)=>controller.current?.escape(id),completed:()=>controller.current?.completed()??[],rebind:async(bind:(c:CompletedFlip)=>Promise<void>)=>{await controller.current?.rebind(bind);},retry:()=>retryAction.current()});
  return {...actions.current,...state};
 }

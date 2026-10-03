@@ -1,9 +1,19 @@
 export type StudyAnchor = {left:number;right:number;top:number;bottom:number};
 export type FloatingFrame = {left:number;top:number;width:number;height:number;crowded?:boolean};
-export function floatingPanelLayout(width:number,height:number,requested:{width:number;height:number},side:'left'|'right',anchor?:StudyAnchor):FloatingFrame {
-  const gap=12;
+export function floatingPanelLayout(width:number,height:number,requested:{width:number;height:number},side:'left'|'right',anchor?:StudyAnchor,mode:{flow?:'vertical'|'paginated';kind?:'word'|'paragraph'}={}):FloatingFrame {
+  const gap=mode.flow==='vertical'&&mode.kind==='word'?20:12;
   const availableWidth=Math.max(0,width-gap*2),availableHeight=Math.max(0,height-gap*2);
   const wanted={width:Math.min(availableWidth,Math.max(280,Number.isFinite(requested.width)?requested.width:440)),height:Math.min(availableHeight,Math.max(180,Number.isFinite(requested.height)?requested.height:600))};
+  if(mode.flow==='vertical'&&mode.kind==='word'){
+    // A short card leaves the surrounding reading visible; no reserved layout space.
+    wanted.height=Math.min(wanted.height,width<=600?Math.round(height*.38):360);
+    if(width<=600){
+      const margin=12,w=Math.min(width-24,wanted.width+16),h=Math.min(height-24,wanted.height);
+      let top=height-margin-h;
+      if(anchor&&anchor.bottom>top-gap&&anchor.top<height-margin){const above=anchor.top-gap-h;if(above>=margin)top=above;else if(anchor.bottom+gap+h<=height-margin)top=anchor.bottom+gap;}
+      return {left:(width-w)/2,top:Math.max(margin,top),width:w,height:h,crowded:Boolean(anchor&&top<anchor.bottom&&top+h>anchor.top)};
+    }
+  }
   const base={left:side==='left'?gap:width-gap-wanted.width,top:gap,...wanted};
   if(!anchor||anchor.right<0||anchor.left>width||anchor.bottom<0||anchor.top>height)return base;
   // Four free rectangles around the selected content. Never change the reader's

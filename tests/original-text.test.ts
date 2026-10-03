@@ -27,7 +27,7 @@ it('copies original text across PDF roots with block boundaries, emoji, accents 
 });
 it('unregisters live and canonical lookup without affecting another root',()=>{
  const doc=new JSDOM('<p>one</p><p>two</p>').window.document;
- const [one,two]=[...doc.querySelectorAll('p')].map(createTextProjection);
+ const [one,two]=[...doc.querySelectorAll('p')].map(el=>createTextProjection(el));
  const off=registerOriginalText(one),off2=registerOriginalText(two);cleanup.push(()=>one.dispose(),()=>two.dispose(),off2);
  const canonical=one.canonicalNode(one.liveRoot.firstChild!)!;
  expect(projectionFor(canonical)).toBe(one);off();off();

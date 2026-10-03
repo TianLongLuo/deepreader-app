@@ -19,7 +19,7 @@ export function createEpubReadingSession(input:{runtime:SessionRuntime;restore:R
  function prune(){const loaded=new Set(runtime.port.views().map(v=>v.document));for(const [doc,entry] of contents){const frame=entry.contents.window.frameElement;if(!loaded.has(doc)||!frame?.isConnected){entry.off();contents.delete(doc);const p=projections.get(doc);p?.off();projections.delete(doc);}}}
  function ensureProjection(content:SessionContents){
   const old=projections.get(content.document);if(old)return old.projection;
-  const projection=createTextProjection(content.document.documentElement),offOriginal=registerOriginalText(projection),offCfi=scope.register(projection);
+  const projection=createTextProjection(content.document.documentElement,{layout:'stable'}),offOriginal=registerOriginalText(projection),offCfi=scope.register(projection);
   projections.set(content.document,{projection,off:()=>{offCfi();offOriginal();projection.dispose();}});return projection;
  }
  const onContent=async(content:SessionContents)=>{
